@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>校园小任务匹配平台</title>
+    <!-- 引入我们的 CSS 皮肤文件 -->
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+    <div class="auth-container">
+        <!-- 登录表单区 -->
+        <div id="login-box" class="form-box">
+            <h2>欢迎回来 👋</h2>
+            <p class="subtitle">登录校园捞人/任务平台</p>
+            
+            <input type="email" id="login-email" placeholder="请输入校园邮箱 (@xxx.edu.cn)">
+            <input type="password" id="login-password" placeholder="请输入密码">
+            
+            <button onclick="login()">登 录</button>
+            
+            <p class="switch-text">还没有账号？ <span onclick="switchForm('register')">点击注册</span></p>
+        </div>
+
+        <!-- 注册表单区 (默认隐藏) -->
+        <div id="register-box" class="form-box hidden">
+            <h2>创建账号 🚀</h2>
+            <p class="subtitle">只需几步，开启校园互助之旅</p>
+            
+            <input type="text" id="reg-name" placeholder="你的昵称 / 姓名">
+            <input type="email" id="reg-email" placeholder="校园邮箱 (用于身份验证)">
+            <input type="password" id="reg-password" placeholder="设置密码">
+            
+            <button onclick="register()">注 册</button>
+            
+            <p class="switch-text">已有账号？ <span onclick="switchForm('login')">直接登录</span></p>
+        </div>
+    </div>
+
+    <!-- 引入我们的 JS 肌肉文件 (通常放在 body 的最后) -->
+    <script src="app.js"></script>
+</body>
+</html>
