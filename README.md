@@ -37,7 +37,7 @@
 
 **1. 克隆项目**
 \`\`\`bash
-git clone https://github.com/你的用户名/CampusTasker.git
+git clone https://github.com/FelixWeekly/CampusTasker.git
 cd CampusTasker
 \`\`\`
 
