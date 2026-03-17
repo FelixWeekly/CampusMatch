@@ -18,28 +18,30 @@
         }
 
         /* 🌟 真正的“悬浮左上角”返回按钮！绝对不挤占其他元素空间 */
-        .back-btn-floating {
+        .back-btn-custom {
             position: absolute;
-            top: 24px;
-            left: 24px;
-            background: white; 
-            border: 1px solid #e5e7eb; 
-            box-shadow: 0 2px 6px rgba(0,0,0,0.05); 
-            color: #374151; 
-            font-weight: bold; 
-            border-radius: 8px; 
-            padding: 8px 16px; 
-            font-size: 14px;
-            cursor: pointer; 
-            transition: all 0.2s;
+            top: 20px;
+            left: 20px;
+            width: fit-content; /* 宽度仅包裹内容 */
+            padding: 8px 16px;
+            background-color: #000000;
+            border: 1px solid #dee2e6;
+            border-radius: 8px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: background-color 0.2s; /* 变色动画 */
+            z-index: 1000;
         }
-        .back-btn-floating:hover { background: #f3f4f6; transform: translateX(-3px); }
+
+        .back-btn-custom:hover {
+            background-color: #e2e6ea; /* 鼠标移上去变深一点 */
+       }
 
         /* 独立居中的标题 */
         .profile-title {
             margin-top: 40px;
             margin-bottom: 20px;
-            font-size: 24px;
+            font-size: 32px;
             color: #111827;
             text-align: center;
         }
@@ -84,7 +86,7 @@
 <body>
 
     <!-- 🌟 死死钉在屏幕左上角的悬浮返回键 -->
-    <button class="back-btn-floating" onclick="window.location.href='dashboard.html'">⬅️ 返回</button>
+    <button class="back-btn-custom" onclick="location.href='dashboard.html'">← 返回大厅</button>
 
     <!-- 独立的标题 -->
     <h1 class="profile-title">🎓 个人主页</h1>
