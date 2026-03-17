@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>个人主页 - CampusTasker</title>
+    <link rel="stylesheet" href="style.css">
+    <style>
+        body { 
+            margin: 0; 
+            padding: 0; 
+            background-color: #f9fafb; 
+            min-height: 100vh;
+            display: flex; 
+            flex-direction: column; 
+            align-items: center; 
+            position: relative; /* 为绝对定位提供参照物 */
+        }
+
+        /* 🌟 真正的“悬浮左上角”返回按钮！绝对不挤占其他元素空间 */
+        .back-btn-floating {
+            position: absolute;
+            top: 24px;
+            left: 24px;
+            background: white; 
+            border: 1px solid #e5e7eb; 
+            box-shadow: 0 2px 6px rgba(0,0,0,0.05); 
+            color: #374151; 
+            font-weight: bold; 
+            border-radius: 8px; 
+            padding: 8px 16px; 
+            font-size: 14px;
+            cursor: pointer; 
+            transition: all 0.2s;
+        }
+        .back-btn-floating:hover { background: #f3f4f6; transform: translateX(-3px); }
+
+        /* 独立居中的标题 */
+        .profile-title {
+            margin-top: 40px;
+            margin-bottom: 20px;
+            font-size: 24px;
+            color: #111827;
+            text-align: center;
+        }
+
+        /* 卡片容器布局 */
+        .profile-container { 
+            width: 100%; 
+            max-width: 1000px; 
+            padding: 0 20px 40px 20px;
+            box-sizing: border-box;
+            display: grid; 
+            grid-template-columns: 1fr 2fr; 
+            gap: 30px; 
+            align-items: start;
+        }
+        
+        /* 左侧个人信息卡片 */
+        .info-card { background: white; padding: 40px 30px; border-radius: 16px; box-shadow: 0 4px 15px rgba(0,0,0,0.03); text-align: center; }
+        .avatar { width: 120px; height: 120px; background-color: #e5e7eb; border-radius: 50%; margin: 0 auto 20px; font-size: 50px; display: flex; align-items: center; justify-content: center; color: #9ca3af; }
+        .user-name { font-size: 26px; color: #111827; margin-bottom: 5px; }
+        .user-tags { color: #6b7280; font-size: 14px; margin-bottom: 20px; }
+        .user-bio { color: #4b5563; font-size: 15px; line-height: 1.6; margin-bottom: 20px; padding: 15px; background: #f9fafb; border-radius: 8px; text-align: left; }
+        .skills-container { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; margin-bottom: 20px; }
+        .skill-tag { background: #eff6ff; color: #2563eb; padding: 6px 14px; border-radius: 20px; font-size: 13px; font-weight: bold; }
+        .portfolio-link { display: inline-block; color: #10b981; text-decoration: none; font-weight: bold; font-size: 14px; margin-bottom: 20px; }
+        .portfolio-link:hover { text-decoration: underline; }
+
+        /* 右侧评价卡片 */
+        .reviews-card { background: white; padding: 30px; border-radius: 16px; box-shadow: 0 4px 15px rgba(0,0,0,0.03); }
+        .rating-header { display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid #e5e7eb; padding-bottom: 20px; margin-bottom: 20px; }
+        .average-score { font-size: 32px; font-weight: bold; color: #f59e0b; }
+        .review-item { padding: 15px 0; border-bottom: 1px dashed #e5e7eb; }
+        .review-item:last-child { border-bottom: none; }
+        .stars { color: #f59e0b; letter-spacing: 2px; }
+
+        /* 模态框通用样式 */
+        .modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); justify-content: center; align-items: center; z-index: 100; }
+        .modal-content { background: white; padding: 30px; border-radius: 16px; width: 90%; max-width: 500px; box-shadow: 0 10px 25px rgba(0,0,0,0.1); }
+        .modal-content input, .modal-content textarea, .modal-content select { width: 100%; padding: 14px; margin-bottom: 15px; border: 1px solid #d1d5db; border-radius: 8px; font-size: 15px; background-color: #f9fafb; }
+    </style>
+</head>
+<body>
+
+    <!-- 🌟 死死钉在屏幕左上角的悬浮返回键 -->
+    <button class="back-btn-floating" onclick="window.location.href='dashboard.html'">⬅️ 返回</button>
+
+    <!-- 独立的标题 -->
+    <h1 class="profile-title">🎓 个人主页</h1>
+
+    <!-- 主体卡片区 -->
+    <div class="profile-container">
+        <!-- 左侧信息 -->
+        <div class="info-card">
+            <div class="avatar" id="avatar-text">👤</div>
+            <h2 class="user-name" id="display-name">加载中...</h2>
+            <p class="user-tags" id="display-dept-grade">院系年级加载中...</p>
+            <div class="skills-container" id="display-skills"></div>
+            <a id="display-portfolio" class="portfolio-link" href="#" target="_blank" style="display: none;">🔗 查看我的作品集/主页</a>
+            <div class="user-bio" id="display-bio">加载中...</div>
+            <div id="action-btn-container"></div>
+        </div>
+
+        <!-- 右侧评价 -->
+        <div class="reviews-card">
+            <div class="rating-header">
+                <h2 style="font-size: 20px; margin: 0;">信用评价与反馈</h2>
+                <div style="text-align: right;">
+                    <div class="average-score" id="display-avg">0.0 <span style="font-size: 20px;">⭐</span></div>
+                    <span style="color: #6b7280; font-size: 14px;">综合评分</span>
+                </div>
+            </div>
+            <div id="reviews-list">
+                <p style="color: #9ca3af; text-align: center; padding: 20px;">暂无评价记录</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- 弹窗：编辑资料 -->
+    <div id="edit-modal" class="modal">
+        <div class="modal-content">
+            <h2 style="margin-bottom: 20px;">✍️ 编辑个人资料</h2>
+            <input type="text" id="edit-dept" placeholder="院系 (如：信息与通信工程学院)">
+            <input type="text" id="edit-grade" placeholder="年级 (如：2024级本科)">
+            <input type="text" id="edit-skills" placeholder="技能标签 (用逗号隔开，如：C++,海报设计,摄影)">
+            <input type="text" id="edit-portfolio" placeholder="个人主页/作品集链接 (可选)">
+            <textarea id="edit-bio" rows="4" placeholder="一句话介绍一下你的特长或性格..."></textarea>
+            <div style="display: flex; gap: 10px; justify-content: flex-end;">
+                <button onclick="closeModal('edit-modal')" style="background: #f3f4f6; color: #374151; padding: 10px 20px; border:none; border-radius: 8px; cursor: pointer;">取消</button>
+                <button onclick="saveProfile()" style="background: #10b981; color: white; padding: 10px 20px; border:none; border-radius: 8px; font-weight: bold; cursor: pointer;">保存资料</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 弹窗：写评价 -->
+    <div id="review-modal" class="modal">
+        <div class="modal-content">
+            <h2 style="margin-bottom: 20px;">🌟 留下你的评价</h2>
+            <select id="review-rating">
+                <option value="5">⭐⭐⭐⭐⭐ 极其靠谱 (5星)</option>
+                <option value="4">⭐⭐⭐⭐ 体验很好 (4星)</option>
+                <option value="3">⭐⭐⭐ 中规中矩 (3星)</option>
+                <option value="2">⭐⭐ 沟通不畅 (2星)</option>
+                <option value="1">⭐ 踩雷警告 (1星)</option>
+            </select>
+            <textarea id="review-comment" rows="4" placeholder="写下你们合作的体验，给其他同学作为参考..."></textarea>
+            <div style="display: flex; gap: 10px; justify-content: flex-end;">
+                <button onclick="closeModal('review-modal')" style="background: #f3f4f6; color: #374151; padding: 10px 20px; border:none; border-radius: 8px; cursor: pointer;">取消</button>
+                <button onclick="submitReview()" style="background: #10b981; color: white; padding: 10px 20px; border:none; border-radius: 8px; font-weight: bold; cursor: pointer;">提交评价</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="profile.js"></script>
+</body>
+</html>

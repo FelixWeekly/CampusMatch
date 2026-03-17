@@ -307,3 +307,14 @@ button:hover {
     border: 1px solid #fecaca;
 }
 .btn-delete:hover { background-color: #fee2e2; }
+
+/* 🌟 已报名按钮样式 (变灰且不可点击) */
+.btn-applied {
+    background-color: #f3f4f6;
+    color: #9ca3af;
+    padding: 8px 18px;
+    font-size: 14px;
+    border-radius: 6px;
+    width: auto;
+    margin: 0;
+}

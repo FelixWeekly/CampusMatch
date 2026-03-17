@@ -60,37 +60,39 @@ async function createPost() {
 // 获取并显示帖子列表
 async function fetchPosts() {
     try {
-        const response = await fetch('http://localhost:3000/api/posts');
+        const currentUser = localStorage.getItem('currentUser');
+        
+        // 发送请求，带上 user 参数，让后端帮我们算“已报名”状态
+        const response = await fetch(`http://localhost:3000/api/posts?user=${currentUser}`);
         const data = await response.json();
 
         if (data.success) {
             const postsContainer = document.getElementById('posts-container');
-            postsContainer.innerHTML = ''; // 先清空原来的内容
+            postsContainer.innerHTML = ''; 
 
             if (data.data.length === 0) {
-                postsContainer.innerHTML = '<p style="text-align:center; color:#999;">目前还没有人发帖，快来抢沙发吧！</p>';
+                postsContainer.innerHTML = '<p style="text-align:center; color:#9ca3af; padding: 40px;">目前还没有人发帖，快来抢沙发吧！</p>';
                 return;
             }
 
-            const currentUser = localStorage.getItem('currentUser');
-
-            // 循环遍历后端的每一条帖子，并动态生成 HTML 代码
-            // 💡 C++ 映射：类似 for(auto& post : posts) { cout << post.title; }
             data.data.forEach(post => {
-                // 🌟 判断：这是我的帖子，还是别人的帖子？
                 const isMyPost = (post.author === currentUser);
                 
-                // 🌟 动态生成按钮：我的帖子显示绿色文字，别人的帖子显示绿色按钮
-                // 🌟 判断：如果是我的帖子，显示“删帖按钮”；如果是别人的，显示“报名按钮”
-                // 🌟 使用全新设计的按钮类名 btn-apply 和 btn-delete
-                const actionBtn = isMyPost 
-                    ? `<div style="display:flex; align-items:center; gap: 12px;">
+                // 🌟 三重状态判断逻辑
+                let actionBtn = '';
+                if (isMyPost) {
+                    actionBtn = `<div style="display:flex; align-items:center; gap: 12px; white-space: nowrap">
                          <span style="color: #10b981; font-weight: bold; font-size: 14px;">(这是你的帖子)</span>
                          <button onclick="deletePost(${post.id})" class="btn-delete">🗑️ 删除</button>
-                       </div>` 
-                    : `<button onclick="applyForPost(${post.id})" class="btn-apply">✋ 我要报名</button>`;
+                       </div>`;
+                } else if (post.has_applied) {
+                    // 已报名状态
+                    actionBtn = `<button disabled class="btn-applied">✅ 已报名</button>`;
+                } else {
+                    // 还没报名
+                    actionBtn = `<button onclick="applyForPost(${post.id})" class="btn-apply">✋ 我要报名</button>`;
+                }
 
-                // 🌟 使用全新设计的卡片结构排版
                 const postHTML = `
                     <div class="post-card">
                         <div class="post-title-row">
@@ -101,7 +103,7 @@ async function fetchPosts() {
                             ${post.content}
                         </div>
                         <div class="post-footer">
-                            <span class="post-author-info">发布者: <strong>${post.author}</strong> &nbsp;|&nbsp; ${post.created_at}</span>
+                            <span class="post-author-info">发布者: <a href="profile.html?user=${post.author}" style="color: #3b82f6; text-decoration: none; font-weight: bold;">${post.author}</a> &nbsp;|&nbsp; ${post.created_at}</span>
                             ${actionBtn}
                         </div>
                     </div>
@@ -111,6 +113,8 @@ async function fetchPosts() {
         }
     } catch (error) {
         console.error("加载帖子失败", error);
+        // 如果出错，在页面上显示红色错误提示，而不是一直转圈
+        document.getElementById('posts-container').innerHTML = '<p style="color: red; text-align: center;">加载失败，请检查后端服务器是否启动！</p>';
     }
 }
 
@@ -144,6 +148,8 @@ async function applyForPost(postId) {
 
         if (data.success) {
             alert('🎉 ' + data.message);
+            // 🌟 报名成功后，重新拉取帖子，按钮会立刻刷新变成灰色的“已报名”！
+            fetchPosts();
         } else {
             alert('申请失败：' + data.message);
         }
@@ -180,7 +186,7 @@ async function openInbox() {
                 const msgHTML = `
                     <div style="background: #f9fafb; padding: 15px; border-radius: 8px; margin-bottom: 10px; border-left: 4px solid #3b82f6;">
                         <p style="font-size: 14px; color: #6b7280; margin-bottom: 5px;">
-                            <strong>${msg.applicant_name}</strong> 申请了你的帖子: <span style="color: #1f2937;">《${msg.title}》</span>
+                            <a href="profile.html?user=${msg.applicant_name}" style="color: #3b82f6; text-decoration: none; font-weight: bold;">${msg.applicant_name}</a> 申请了你的帖子: <span style="color: #1f2937;">《${msg.title}》</span>
                         </p>
                         <p style="background: white; padding: 10px; border-radius: 6px; border: 1px solid #e5e7eb; margin: 0;">
                             💬 留言: ${msg.message}
@@ -208,7 +214,7 @@ function updatePlaceholders() {
 
     if (type === '寻人组队') {
         titleInput.placeholder = "一句话概括你的需求 (如：急寻一名会弹吉他的同学迎新晚会伴奏)";
-        contentInput.placeholder = "详细描述一下任务时间、地点、要求或报酬...";
+        contentInput.placeholder = "详细描述一下任务时间、地点、要求或可能愿意提供的报酬...";
     } else if (type === '提供技能') {
         titleInput.placeholder = "一句话概括你能做什么 (如：精通什么编程语言/海报设计/视频剪辑)";
         contentInput.placeholder = "详细描述一下你的技能水平、空闲时间以及可能会存在的期望报酬...";

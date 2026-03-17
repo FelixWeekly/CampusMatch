@@ -11,12 +11,18 @@ app.use(express.json());
 const db = new DatabaseSync('./database.sqlite');
 
 // 2. 初始化三张表：用户表(users) + 帖子表(posts)/发布者 + 🌟 新增：申请表(applications)/接收者
+// 🌟 数据库全面升级：增加了详细资料字段，新增了 reviews (评价) 表
 db.exec(`
     CREATE TABLE IF NOT EXISTS users (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         name TEXT,
         email TEXT UNIQUE,
-        password TEXT
+        password TEXT,
+        department TEXT DEFAULT '未设置院系',
+        grade TEXT DEFAULT '未设置年级',
+        skills TEXT DEFAULT '暂无技能标签',
+        bio TEXT DEFAULT '这个人很懒，还没写自我介绍~',
+        portfolio TEXT DEFAULT ''
     );
     
     CREATE TABLE IF NOT EXISTS posts (
@@ -34,6 +40,16 @@ db.exec(`
         post_id INTEGER,           -- 关联的帖子 ID
         applicant_name TEXT,       -- 申请人的名字
         message TEXT,              -- 申请留言（比如：我会弹吉他）
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
+
+    -- 🌟 新增：用户评价表
+    CREATE TABLE IF NOT EXISTS reviews (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        reviewer TEXT,     -- 评价人
+        reviewee TEXT,     -- 被评价人
+        rating INTEGER,    -- 星级 (1-5)
+        comment TEXT,      -- 评语
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP
     );
 `);
@@ -87,10 +103,23 @@ app.post('/api/posts', (req, res) => {
 });
 
 // 🌟 【新增：获取所有帖子接口】(按时间倒序排列，最新的在最上面)
+// 🌟 【升级：获取所有帖子接口 (带上已报名状态)】
 app.get('/api/posts', (req, res) => {
+    const currentUser = req.query.user; // 获取当前是谁在看大厅
     try {
-        const stmt = db.prepare("SELECT * FROM posts ORDER BY created_at DESC");
-        const posts = stmt.all(); // all() 会获取所有匹配的行，返回一个数组
+        const posts = db.prepare("SELECT * FROM posts ORDER BY created_at DESC").all();
+        
+        // 🔮 如果传了当前用户名，去查一下他都报了哪些名
+        if (currentUser) {
+            const myApps = db.prepare("SELECT post_id FROM applications WHERE applicant_name = ?").all(currentUser);
+            const myAppSet = new Set(myApps.map(a => a.post_id)); // 用 Set 加速查找
+            
+            // 给每条帖子打上标记：有没有在我的报名集合里？
+            posts.forEach(post => {
+                post.has_applied = myAppSet.has(post.id);
+            });
+        }
+        
         res.json({ success: true, data: posts });
     } catch (err) {
         res.status(500).json({ success: false, message: '获取帖子失败' });
@@ -165,6 +194,65 @@ app.delete('/api/posts/:id', (req, res) => {
         res.status(500).json({ success: false, message: '服务器错误' });
     }
 });
+
+// ================== 🌟 V2.0 新增接口 ==================
+
+// 1. 获取用户主页资料与评价
+app.get('/api/profile/:username', (req, res) => {
+    const username = req.params.username;
+    try {
+        const user = db.prepare("SELECT name, email, department, grade, skills, bio, portfolio FROM users WHERE name = ?").get(username);
+        if (!user) return res.status(404).json({ success: false, message: '用户不存在' });
+
+        const reviews = db.prepare("SELECT * FROM reviews WHERE reviewee = ? ORDER BY created_at DESC").all(username);
+        
+        // 计算平均星级
+        let avgRating = 0;
+        if (reviews.length > 0) {
+            const sum = reviews.reduce((acc, curr) => acc + curr.rating, 0);
+            avgRating = (sum / reviews.length).toFixed(1); // 保留一位小数
+        }
+
+        res.json({ success: true, data: user, reviews: reviews, avgRating: avgRating });
+    } catch (err) { res.status(500).json({ success: false }); }
+});
+
+// 2. 更新个人资料
+app.put('/api/profile', (req, res) => {
+    const { name, department, grade, skills, bio, portfolio } = req.body;
+    try {
+        db.prepare("UPDATE users SET department=?, grade=?, skills=?, bio=?, portfolio=? WHERE name=?").run(department, grade, skills, bio, portfolio, name);
+        res.json({ success: true, message: '资料保存成功！' });
+    } catch (err) { res.status(500).json({ success: false }); }
+});
+
+// 3. 提交评价
+app.post('/api/reviews', (req, res) => {
+    const { reviewer, reviewee, rating, comment } = req.body;
+    try {
+        db.prepare("INSERT INTO reviews (reviewer, reviewee, rating, comment) VALUES (?, ?, ?, ?)").run(reviewer, reviewee, rating, comment);
+        res.json({ success: true, message: '评价提交成功！' });
+    } catch (err) { res.status(500).json({ success: false }); }
+});
+
+// 🌟 【新增：删除评价接口 (带权限校验)】
+app.delete('/api/reviews/:id', (req, res) => {
+    const reviewId = req.params.id;
+    const reviewer = req.body.reviewer; // 谁发起的删除请求？
+    
+    try {
+        const review = db.prepare("SELECT * FROM reviews WHERE id = ?").get(reviewId);
+        
+        if (!review) return res.status(404).json({ success: false, message: '评价不存在' });
+        if (review.reviewer !== reviewer) return res.status(403).json({ success: false, message: '无权删除别人的评价！' });
+        
+        db.prepare("DELETE FROM reviews WHERE id = ?").run(reviewId);
+        res.json({ success: true, message: '删除成功' });
+    } catch (err) {
+        res.status(500).json({ success: false });
+    }
+});
+
 
 // 启动服务器
 const port = 3000;
