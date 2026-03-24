@@ -31,6 +31,9 @@ db.exec(`
         title TEXT,
         content TEXT,
         type TEXT,
+        location TEXT DEFAULT '',
+        compensation TEXT DEFAULT '',
+        popularity INTEGER DEFAULT 0,
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP
     );
 
@@ -50,6 +53,16 @@ db.exec(`
         reviewee TEXT,     -- 被评价人
         rating INTEGER,    -- 星级 (1-5)
         comment TEXT,      -- 评语
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
+    
+    -- 🌟 新增：私信表
+    CREATE TABLE IF NOT EXISTS messages (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        sender TEXT,       -- 发送者
+        recipient TEXT,    -- 接收者
+        message TEXT,      -- 消息内容
+        read INTEGER DEFAULT 0, -- 0 未读, 1 已读
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP
     );
 `);
@@ -92,10 +105,10 @@ app.post('/api/login', (req, res) => {
 
 // 🌟 【新增：发布帖子接口】
 app.post('/api/posts', (req, res) => {
-    const { author, title, content, type } = req.body;
+    const { author, title, content, type, location, compensation, pay } = req.body;
     try {
-        const stmt = db.prepare("INSERT INTO posts (author, title, content, type) VALUES (?, ?, ?, ?)");
-        stmt.run(author, title, content, type);
+        const stmt = db.prepare("INSERT INTO posts (author, title, content, type, location, compensation) VALUES (?, ?, ?, ?, ?, ?)");
+        stmt.run(author, title, content, type, location || '', compensation || '');
         res.json({ success: true, message: '发布成功！' });
     } catch (err) {
         res.status(500).json({ success: false, message: '发布失败' });
@@ -253,6 +266,57 @@ app.delete('/api/reviews/:id', (req, res) => {
     }
 });
 
+// 🌟 【新增：获取私聊对话历史】
+app.get('/api/conversation', (req, res) => {
+    const { user, with: withUser } = req.query;
+    
+    if (!user || !withUser) {
+        return res.status(400).json({ success: false, message: '缺少必要参数' });
+    }
+    
+    try {
+        // 获取两人之间的所有对话（双向）
+        const stmt = db.prepare(`
+            SELECT * FROM messages 
+            WHERE (sender = ? AND recipient = ?) OR (sender = ? AND recipient = ?)
+            ORDER BY created_at ASC
+        `);
+        const messages = stmt.all(user, withUser, withUser, user);
+        res.json({ success: true, data: messages });
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ success: false, message: '获取对话失败' });
+    }
+});
+
+// 🌟 【新增：发送私信】
+app.post('/api/messages', (req, res) => {
+    const { sender, recipient, message } = req.body;
+    
+    if (!sender || !recipient || !message) {
+        return res.status(400).json({ success: false, message: '缺少必要参数' });
+    }
+    
+    try {
+        const stmt = db.prepare("INSERT INTO messages (sender, recipient, message) VALUES (?, ?, ?)");
+        stmt.run(sender, recipient, message);
+        res.json({ success: true, message: '消息已发送' });
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ success: false, message: '发送失败' });
+    }
+});
+
+// 🌟 【新增：浏览帖子时更新热度】
+app.put('/api/posts/:id/view', (req, res) => {
+    const postId = req.params.id;
+    try {
+        db.prepare("UPDATE posts SET popularity = popularity + 1 WHERE id = ?").run(postId);
+        res.json({ success: true });
+    } catch (err) {
+        res.status(500).json({ success: false });
+    }
+});
 
 // 启动服务器
 const port = 3000;

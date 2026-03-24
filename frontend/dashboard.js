@@ -15,6 +15,19 @@ window.onload = function() {
 
     // 3. 去后端抓取所有的帖子
     fetchPosts();
+    
+    // 4. 绑定补偿复选框事件
+    const compensationCheckbox = document.getElementById('post-compensation');
+    const amountInput = document.getElementById('post-amount');
+    
+    if (compensationCheckbox && amountInput) {
+        compensationCheckbox.addEventListener('change', function() {
+            amountInput.style.display = this.checked ? 'block' : 'none';
+            if (!this.checked) {
+                amountInput.value = '';
+            }
+        });
+    }
 };
 
 // 退出登录
@@ -29,9 +42,16 @@ async function createPost() {
     const content = document.getElementById('post-content').value;
     const type = document.getElementById('post-type').value;
     const author = localStorage.getItem('currentUser'); // 谁发的帖？
+    const hasCompensation = document.getElementById('post-compensation').checked;
+    const amount = document.getElementById('post-amount').value.trim();
 
     if (title === '' || content === '') {
         alert('标题和内容不能为空！');
+        return;
+    }
+    
+    if (hasCompensation && amount === '') {
+        alert('请输入报酬金额！');
         return;
     }
 
@@ -40,7 +60,14 @@ async function createPost() {
         const response = await fetch('http://localhost:3000/api/posts', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ author, title, content, type })
+            body: JSON.stringify({ 
+                author, 
+                title, 
+                content, 
+                type, 
+                location: '', 
+                compensation: hasCompensation ? amount : ''
+            })
         });
         const data = await response.json();
 
@@ -49,6 +76,9 @@ async function createPost() {
             // 清空输入框
             document.getElementById('post-title').value = '';
             document.getElementById('post-content').value = '';
+            document.getElementById('post-compensation').checked = false;
+            document.getElementById('post-amount').value = '';
+            document.getElementById('post-amount').style.display = 'none';
             // 重新刷新帖子列表
             fetchPosts();
         }
@@ -71,6 +101,12 @@ async function fetchPosts() {
 
         if (data.success) {
             allPosts = data.data || [];
+            
+            // 为每个帖子更新热度（每次浏览都计数）
+            allPosts.forEach(post => {
+                fetch(`http://localhost:3000/api/posts/${post.id}/view`, { method: 'PUT' }).catch(e => {});
+            });
+            
             // 渲染当前（可能带过滤）的帖子
             renderPosts();
         }
@@ -118,11 +154,26 @@ function renderPosts() {
             actionBtn = `<button onclick="applyForPost(${post.id})" class="btn-apply">✋ 我要报名</button>`;
         }
 
+        // 构建有报酬标签
+        let compensationTag = '';
+        if (post.compensation) {
+            compensationTag = `<span class="post-tag" style="background: #fecaca; color: #991b1b; margin-left: 8px;">💰 ${post.compensation}</span>`;
+        }
+
+        // 构建热度标签
+        let popularityBadge = '';
+        if (post.popularity && post.popularity > 0) {
+            const heatLevel = post.popularity > 50 ? '🔥' : post.popularity > 20 ? '🌡️' : '👁️';
+            popularityBadge = `<span style="margin-left: auto; font-size: 13px; color: #f59e0b; font-weight: bold; background: #fef3c7; padding: 4px 10px; border-radius: 12px;">${heatLevel} ${post.popularity}</span>`;
+        }
+
         const postHTML = `
             <div class="post-card">
                 <div class="post-title-row">
-                    <span class="post-tag">${post.type || ''}</span> 
+                    <span class="post-tag">${post.type || ''}</span>
+                    ${compensationTag}
                     <span>${post.title}</span>
+                    ${popularityBadge}
                 </div>
                 <div class="post-content-text">
                     ${post.content}
@@ -156,13 +207,11 @@ function applyFilters(posts) {
     }
 
     if (compensation) {
-        // 这里使用约定字段：p.compensation 或 p.pay
+        // 简化为两个选项：free (无报酬) 或 paid (有报酬)
         if (compensation === 'free') {
-            result = result.filter(p => !p.compensation && !p.pay);
-        } else if (compensation === 'paid-low') {
-            result = result.filter(p => (p.compensation === 'low' || (p.pay && p.pay <= 50)));
-        } else if (compensation === 'paid-high') {
-            result = result.filter(p => (p.compensation === 'high' || (p.pay && p.pay > 50)));
+            result = result.filter(p => !p.compensation);
+        } else if (compensation === 'paid') {
+            result = result.filter(p => p.compensation && p.compensation.length > 0);
         }
     }
 
