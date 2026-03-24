@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>校园捞人大厅</title>
+    <title>Dashboard</title>
     <link rel="stylesheet" href="style.css">
     <style>
         /* 针对大厅补充一点点特定样式 */
@@ -51,7 +51,24 @@
         </div>
 
         <!-- 帖子列表展示区域 -->
-        <h2 style="color: #111827; margin-bottom: 20px; font-size: 22px;">最新帖子 📋</h2>
+        <h2 style="color: #111827; margin-bottom: 12px; font-size: 22px;">最新帖子 📋</h2>
+        <!-- 搜索与筛选栏 -->
+        <div style="display:flex; gap:10px; align-items:center; margin-bottom:18px; flex-wrap:wrap;">
+            <input id="filter-text" type="search" placeholder="搜索标题或内容..." style="flex:1; padding:10px; border-radius:8px; border:1px solid #e5e7eb;" />
+            <input id="filter-location" type="text" placeholder="地点 (可选)" style="width:160px; padding:10px; border-radius:8px; border:1px solid #e5e7eb;" />
+            <select id="filter-compensation" style="width:160px; padding:10px; border-radius:8px; border:1px solid #e5e7eb;">
+                <option value="">报酬: 不限定</option>
+                <option value="free">无报酬</option>
+                <option value="paid-low">有偿（低）</option>
+                <option value="paid-high">有偿（高）</option>
+            </select>
+            <select id="sort-by" style="width:160px; padding:10px; border-radius:8px; border:1px solid #e5e7eb;">
+                <option value="newest">排序: 最新发布</option>
+                <option value="popular">排序: 热度优先</option>
+            </select>
+            <button onclick="clearFilters()" style="padding:10px 14px; border-radius:8px; background:#efefef; border:1px solid #e5e7eb;">清除</button>
+        </div>
+
         <div id="posts-container">
             <p style="text-align:center; color:#9ca3af; padding: 40px;">正在加载帖子...</p>
         </div>
@@ -68,6 +85,21 @@
             <!-- 消息列表会被填充到这里 -->
             <div id="inbox-messages">
                 <p>加载中...</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- 🌟 新增：简单私聊弹窗 -->
+    <div id="chat-modal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.5); justify-content:center; align-items:center;">
+        <div style="background:white; width:90%; max-width:560px; border-radius:12px; max-height:80vh; overflow:hidden; display:flex; flex-direction:column;">
+            <div style="padding:14px 18px; border-bottom:1px solid #e5e7eb; display:flex; justify-content:space-between; align-items:center;">
+                <strong id="chat-with">聊天</strong>
+                <button onclick="closeChat()" style="background:none;border:none;font-size:20px;cursor:pointer;color:#9ca3af;">&times;</button>
+            </div>
+            <div id="chat-history" style="padding:16px; overflow:auto; flex:1; background:#f9fafb;"></div>
+            <div style="padding:12px; border-top:1px solid #e5e7eb; display:flex; gap:8px;">
+                <input id="chat-input" type="text" placeholder="输入私信..." style="flex:1; padding:10px; border-radius:8px; border:1px solid #e5e7eb;" />
+                <button onclick="sendChatMessage()" style="padding:10px 14px; border-radius:8px; background:#3b82f6; color:#fff; border:none;">发送</button>
             </div>
         </div>
     </div>
