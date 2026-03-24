@@ -172,6 +172,23 @@ function openChatWithUser(withUser) {
     document.getElementById('chat-history').innerHTML = '<p style="color:#9ca3af; text-align:center;">正在加载对话...</p>';
     window._chatTarget = withUser;
     fetchConversation(withUser);
+    
+    // 为输入框绑定事件监听器（延迟一帧确保 DOM 已准备好）
+    setTimeout(() => {
+        const chatInput = document.getElementById('chat-input');
+        if (!chatInput) {
+            console.error('chat-input 元素未找到');
+            return;
+        }
+        
+        chatInput.focus();
+        
+        // 移除旧的事件监听（防止重复绑定）
+        chatInput.removeEventListener('keydown', handleChatInputKeyDown);
+        
+        // 绑定按键事件（回车发送）
+        chatInput.addEventListener('keydown', handleChatInputKeyDown);
+    }, 0);
 }
 
 function closeChat() {
@@ -209,8 +226,16 @@ async function sendChatMessage() {
     const input = document.getElementById('chat-input');
     const text = (input.value || '').trim();
     if (!text) return;
+    
+    // 防止重复发送
+    if (window._isSending) return;
+    window._isSending = true;
+    
     const to = window._chatTarget;
-    if (!to) return alert('目标用户缺失');
+    if (!to) {
+        window._isSending = false;
+        return alert('目标用户缺失');
+    }
 
     try {
         const resp = await fetch('http://localhost:3000/api/messages', {
@@ -228,10 +253,22 @@ async function sendChatMessage() {
             msgEl.innerHTML = `<div style="background:#3b82f6; color:#fff; padding:10px 12px; border-radius:12px; max-width:75%;">${text}</div>`;
             h.appendChild(msgEl);
             h.scrollTop = h.scrollHeight;
+            input.focus();
         } else {
             alert('发送失败：' + j.message);
         }
     } catch (err) {
         alert('网络错误，发送失败');
+    } finally {
+        window._isSending = false;
+    }
+}
+
+// 处理回车发送的函数
+function handleChatInputKeyDown(e) {
+    if (e.key === 'Enter' && !e.shiftKey) {
+        e.preventDefault();
+        e.stopPropagation();
+        sendChatMessage();
     }
 }

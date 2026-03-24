@@ -160,11 +160,35 @@ function renderPosts() {
             compensationTag = `<span class="post-tag" style="background: #fecaca; color: #991b1b; margin-left: 8px;">💰 ${post.compensation}</span>`;
         }
 
-        // 构建热度标签
+        // 构建热度标签（增强可视化）
         let popularityBadge = '';
         if (post.popularity && post.popularity > 0) {
-            const heatLevel = post.popularity > 50 ? '🔥' : post.popularity > 20 ? '🌡️' : '👁️';
-            popularityBadge = `<span style="margin-left: auto; font-size: 13px; color: #f59e0b; font-weight: bold; background: #fef3c7; padding: 4px 10px; border-radius: 12px;">${heatLevel} ${post.popularity}</span>`;
+            const maxPopularity = 100;
+            const popularityPercent = Math.min(post.popularity / maxPopularity * 100, 100);
+            
+            let heatColor, heatLevel;
+            if (post.popularity > 50) {
+                heatColor = '#ef4444';
+                heatLevel = '🔥 HOT';
+            } else if (post.popularity > 20) {
+                heatColor = '#f59e0b';
+                heatLevel = '🌡️ WARM';
+            } else {
+                heatColor = '#8b5cf6';
+                heatLevel = '👁️ NEW';
+            }
+            
+            popularityBadge = `
+                <div style="display: flex; flex-direction: column; gap: 4px; margin-left: auto; min-width: 140px;">
+                    <div style="display: flex; align-items: center; gap: 6px; justify-content: flex-end;">
+                        <span style="font-size: 13px; font-weight: bold; color: ${heatColor};">${heatLevel}</span>
+                        <span style="font-size: 14px; font-weight: bold; color: #1f2937; background: ${heatColor}; color: white; padding: 2px 8px; border-radius: 12px;">${post.popularity}</span>
+                    </div>
+                    <div style="width: 100%; height: 4px; background: #e5e7eb; border-radius: 2px; overflow: hidden;">
+                        <div style="height: 100%; width: ${popularityPercent}%; background: linear-gradient(90deg, ${post.popularity > 50 ? '#fca5a5' : '#fbbf24'}, ${post.popularity > 50 ? '#ef4444' : '#f59e0b'}); transition: width 0.3s ease;"></div>
+                    </div>
+                </div>
+            `;
         }
 
         const postHTML = `
@@ -343,6 +367,23 @@ function openChat(withUser, contextTitle) {
     // 记住当前聊天对象
     window._chatTarget = withUser;
     fetchConversation(withUser);
+    
+    // 为输入框绑定事件监听器（延迟一帧确保 DOM 已准备好）
+    setTimeout(() => {
+        const chatInput = document.getElementById('chat-input');
+        if (!chatInput) {
+            console.error('chat-input 元素未找到');
+            return;
+        }
+        
+        chatInput.focus();
+        
+        // 移除旧的事件监听（防止重复绑定）
+        chatInput.removeEventListener('keydown', handleChatInputKeyDown);
+        
+        // 绑定按键事件（回车发送）
+        chatInput.addEventListener('keydown', handleChatInputKeyDown);
+    }, 0);
 }
 
 function closeChat() {
@@ -381,9 +422,17 @@ async function sendChatMessage() {
     const input = document.getElementById('chat-input');
     const text = (input.value || '').trim();
     if (!text) return;
+    
+    // 防止重复发送
+    if (window._isSending) return;
+    window._isSending = true;
+    
     const currentUser = localStorage.getItem('currentUser');
     const to = window._chatTarget;
-    if (!to) return alert('目标用户缺失');
+    if (!to) {
+        window._isSending = false;
+        return alert('目标用户缺失');
+    }
 
     try {
         const resp = await fetch('http://localhost:3000/api/messages', {
@@ -402,11 +451,23 @@ async function sendChatMessage() {
             msgEl.innerHTML = `<div style="background:#3b82f6; color:#fff; padding:10px 12px; border-radius:12px; max-width:75%;">${text}</div>`;
             h.appendChild(msgEl);
             h.scrollTop = h.scrollHeight;
+            input.focus();
         } else {
             alert('发送失败：' + j.message);
         }
     } catch (err) {
         alert('网络错误，发送失败');
+    } finally {
+        window._isSending = false;
+    }
+}
+
+// 处理回车发送的函数
+function handleChatInputKeyDown(e) {
+    if (e.key === 'Enter' && !e.shiftKey) {
+        e.preventDefault();
+        e.stopPropagation();
+        sendChatMessage();
     }
 }
 

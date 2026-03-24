@@ -260,11 +260,13 @@ button:hover {
 }
 .post-title-row {
     display: flex;
-    align-items: center;
+    align-items: flex-start;
     margin-bottom: 16px;
     font-size: 18px;
     color: #111827;
     font-weight: 700;
+    gap: 12px;
+    flex-wrap: wrap;
 }
 .post-content-text {
     color: #4b5563;
@@ -317,4 +319,21 @@ button:hover {
     border-radius: 6px;
     width: auto;
     margin: 0;
+}
+
+/* 排序下拉菜单样式优化 */
+#sort-by {
+    background-color: white;
+    border: 1px solid #e5e7eb;
+}
+
+#sort-by:hover {
+    border-color: #3b82f6;
+    box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.1);
+}
+
+#sort-by:focus {
+    outline: none;
+    border-color: #3b82f6;
+    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
 }
