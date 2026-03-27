@@ -106,17 +106,21 @@ app.post('/api/login', (req, res) => {
 // 🌟 【新增：发布帖子接口】
 app.post('/api/posts', (req, res) => {
     const { author, title, content, type, location, compensation, pay } = req.body;
+    console.log('📝 收到发布请求:', { author, title, content, type, location, compensation });
     try {
         const stmt = db.prepare("INSERT INTO posts (author, title, content, type, location, compensation) VALUES (?, ?, ?, ?, ?, ?)");
         stmt.run(author, title, content, type, location || '', compensation || '');
+        console.log('✅ 帖子发布成功！');
         res.json({ success: true, message: '发布成功！' });
     } catch (err) {
-        res.status(500).json({ success: false, message: '发布失败' });
+        console.error('❌ 发布帖子错误:', err.message);
+        console.error('❌ 错误详情:', err);
+        res.status(500).json({ success: false, message: '发布失败：' + err.message });
     }
 });
 
 // 🌟 【新增：获取所有帖子接口】(按时间倒序排列，最新的在最上面)
-// 🌟 【升级：获取所有帖子接口 (带上已报名状态)】
+// 🌟 【升级：获取所有帖子接口 (带上已报名状态和报名人数)】
 app.get('/api/posts', (req, res) => {
     const currentUser = req.query.user; // 获取当前是谁在看大厅
     try {
@@ -132,6 +136,12 @@ app.get('/api/posts', (req, res) => {
                 post.has_applied = myAppSet.has(post.id);
             });
         }
+        
+        // 🌟 为每个帖子计算已报名人数
+        posts.forEach(post => {
+            const appCount = db.prepare("SELECT COUNT(*) as count FROM applications WHERE post_id = ?").get(post.id);
+            post.applicant_count = appCount ? appCount.count : 0;
+        });
         
         res.json({ success: true, data: posts });
     } catch (err) {

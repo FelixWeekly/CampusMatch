@@ -42,18 +42,26 @@ async function createPost() {
     const content = document.getElementById('post-content').value;
     const type = document.getElementById('post-type').value;
     const author = localStorage.getItem('currentUser'); // 谁发的帖？
-    const hasCompensation = document.getElementById('post-compensation').checked;
-    const amount = document.getElementById('post-amount').value.trim();
-
+    
     if (title === '' || content === '') {
         alert('标题和内容不能为空！');
         return;
     }
     
-    if (hasCompensation && amount === '') {
-        alert('请输入报酬金额！');
-        return;
+    // 根据类型确定报酬
+    let hasCompensation = false;
+    let amount = '';
+    
+    if (type === '寻人组队') {
+        hasCompensation = document.getElementById('post-compensation').checked;
+        amount = document.getElementById('post-amount').value.trim();
+        
+        if (hasCompensation && amount === '') {
+            alert('请输入报酬金额！');
+            return;
+        }
     }
+    // 如果是"提供技能"，compensation 保持为空字符串
 
     // 打包数据发送给后端
     try {
@@ -66,7 +74,7 @@ async function createPost() {
                 content, 
                 type, 
                 location: '', 
-                compensation: hasCompensation ? amount : ''
+                compensation: (type === '寻人组队' && hasCompensation) ? amount : ''
             })
         });
         const data = await response.json();
@@ -79,6 +87,8 @@ async function createPost() {
             document.getElementById('post-compensation').checked = false;
             document.getElementById('post-amount').value = '';
             document.getElementById('post-amount').style.display = 'none';
+            document.getElementById('post-type').value = '寻人组队'; // 重置为默认类型
+            updatePlaceholders(); // 更新提示词
             // 重新刷新帖子列表
             fetchPosts();
         }
@@ -139,13 +149,25 @@ function renderPosts() {
     filtered.forEach(post => {
         const isMyPost = (post.author === currentUser);
         
-        // 三重状态判断逻辑
+        // 判断是否是"提供技能"类型
+        const isSkillPost = (post.type === '提供技能');
+        
+        // 三重状态判断逻辑（仅对"寻人组队"适用）
         let actionBtn = '';
         if (isMyPost) {
             actionBtn = `<div style="display:flex; align-items:center; gap: 12px; white-space: nowrap">
                          <span style="color: #10b981; font-weight: bold; font-size: 14px;">(这是你的帖子)</span>
                          <button onclick="deletePost(${post.id})" class="btn-delete">🗑️ 删除</button>
                        </div>`;
+        } else if (isSkillPost) {
+            // 提供技能类型：根据是否已联系过显示不同按钮
+            if (post.has_applied) {
+                // 已经联系过了，显示继续聊天按钮
+                actionBtn = `<button onclick="openChat('${post.author}', '${post.title.replace(/'/g, "\\'")}')" class="btn-apply">💬 继续聊天</button>`;
+            } else {
+                // 还没联系过，显示与我联系按钮
+                actionBtn = `<button onclick="contactSkillProvider(${post.id})" class="btn-apply">💬 与我联系</button>`;
+            }
         } else if (post.has_applied) {
             // 已报名状态
             actionBtn = `<button disabled class="btn-applied">✅ 已报名</button>`;
@@ -154,18 +176,15 @@ function renderPosts() {
             actionBtn = `<button onclick="applyForPost(${post.id})" class="btn-apply">✋ 我要报名</button>`;
         }
 
-        // 构建有报酬标签
+        // 构建有报酬标签（仅对"寻人组队"显示）
         let compensationTag = '';
-        if (post.compensation) {
+        if (post.compensation && !isSkillPost) {
             compensationTag = `<span class="post-tag" style="background: #fecaca; color: #991b1b; margin-left: 8px;">💰 ${post.compensation}</span>`;
         }
 
-        // 构建热度标签（增强可视化）
+        // 构建热度标签（简化版本，仅显示基础信息）
         let popularityBadge = '';
         if (post.popularity && post.popularity > 0) {
-            const maxPopularity = 100;
-            const popularityPercent = Math.min(post.popularity / maxPopularity * 100, 100);
-            
             let heatColor, heatLevel;
             if (post.popularity > 50) {
                 heatColor = '#ef4444';
@@ -178,32 +197,45 @@ function renderPosts() {
                 heatLevel = '👁️ NEW';
             }
             
-            popularityBadge = `
-                <div style="display: flex; flex-direction: column; gap: 4px; margin-left: auto; min-width: 140px;">
-                    <div style="display: flex; align-items: center; gap: 6px; justify-content: flex-end;">
-                        <span style="font-size: 13px; font-weight: bold; color: ${heatColor};">${heatLevel}</span>
-                        <span style="font-size: 14px; font-weight: bold; color: #1f2937; background: ${heatColor}; color: white; padding: 2px 8px; border-radius: 12px;">${post.popularity}</span>
-                    </div>
-                    <div style="width: 100%; height: 4px; background: #e5e7eb; border-radius: 2px; overflow: hidden;">
-                        <div style="height: 100%; width: ${popularityPercent}%; background: linear-gradient(90deg, ${post.popularity > 50 ? '#fca5a5' : '#fbbf24'}, ${post.popularity > 50 ? '#ef4444' : '#f59e0b'}); transition: width 0.3s ease;"></div>
-                    </div>
+            popularityBadge = `<span style="font-size: 13px; font-weight: bold; color: ${heatColor};">${heatLevel} (${post.popularity})</span>`;
+        }
+
+        // 🌟 构建已报名人数徽章（仅对"寻人组队"显示）
+        let applicantBadge = '';
+        if (!isSkillPost) {
+            const applicantCount = post.applicant_count || 0;
+            applicantBadge = `
+                <div style="display: flex; align-items: center; gap: 8px; padding: 8px 12px; background: #e0f2fe; border-radius: 8px; border: 1px solid #0ea5e9; margin-left: 12px;">
+                    <span style="font-size: 14px; font-weight: bold; color: #0369a1;">👥</span>
+                    <span style="font-size: 13px; font-weight: bold; color: #0369a1;">${applicantCount} 人已报名</span>
                 </div>
             `;
         }
 
         const postHTML = `
-            <div class="post-card">
-                <div class="post-title-row">
-                    <span class="post-tag">${post.type || ''}</span>
-                    ${compensationTag}
-                    <span>${post.title}</span>
-                    ${popularityBadge}
+            <div class="post-card" style="padding: 24px; background: white; border-radius: 8px; border: 1px solid #e5e7eb; box-shadow: 0 1px 2px rgba(0,0,0,0.05);">
+                <div style="display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; margin-bottom: 16px;">
+                    <div style="flex: 1;">
+                        <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 12px;">
+                            <span class="post-tag" style="background: #dbeafe; color: #1e40af; padding: 6px 12px; border-radius: 4px; font-size: 13px; font-weight: bold;">${post.type || ''}</span>
+                            ${compensationTag}
+                        </div>
+                        <h3 style="font-size: 18px; font-weight: 700; color: #1f2937; margin-bottom: 12px; line-height: 1.4;">${post.title}</h3>
+                    </div>
+                    <div style="flex-shrink: 0;">
+                        ${applicantBadge}
+                    </div>
                 </div>
-                <div class="post-content-text">
+                <div style="font-size: 15px; color: #374151; line-height: 1.6; margin-bottom: 16px; word-break: break-word;">
                     ${post.content}
                 </div>
-                <div class="post-footer">
-                    <span class="post-author-info">发布者: <a href="profile.html?user=${post.author}" style="color: #3b82f6; text-decoration: none; font-weight: bold;">${post.author}</a> &nbsp;|&nbsp; ${post.created_at || ''}</span>
+                <div style="display: flex; justify-content: space-between; align-items: center; gap: 16px; padding-top: 16px; border-top: 1px solid #f3f4f6; flex-wrap: wrap;">
+                    <div style="display: flex; align-items: center; gap: 12px; font-size: 14px; color: #6b7280;">
+                        <span>发布者: <a href="profile.html?user=${post.author}" style="color: #3b82f6; text-decoration: none; font-weight: bold;">${post.author}</a></span>
+                        <span style="color: #9ca3af;">|</span>
+                        <span style="color: #9ca3af;">${post.created_at || ''}</span>
+                        ${popularityBadge ? '<span style="color: #9ca3af;">|</span>' + popularityBadge : ''}
+                    </div>
                     ${actionBtn}
                 </div>
             </div>
@@ -215,7 +247,7 @@ function renderPosts() {
 // 应用过滤器并返回新数组
 function applyFilters(posts) {
     const text = (document.getElementById('filter-text')?.value || '').trim().toLowerCase();
-    const location = (document.getElementById('filter-location')?.value || '').trim().toLowerCase();
+    const type = (document.getElementById('filter-type')?.value || '');
     const compensation = (document.getElementById('filter-compensation')?.value || '');
     const sortBy = (document.getElementById('sort-by')?.value || 'newest');
 
@@ -225,13 +257,14 @@ function applyFilters(posts) {
         result = result.filter(p => ((p.title || '') + ' ' + (p.content || '')).toLowerCase().includes(text));
     }
 
-    if (location) {
-        // 如果后端没有 location 字段，这里不会匹配任何内容
-        result = result.filter(p => (p.location || '').toLowerCase().includes(location));
+    // 按帖子类型过滤
+    if (type) {
+        result = result.filter(p => p.type === type);
     }
 
     if (compensation) {
         // 简化为两个选项：free (无报酬) 或 paid (有报酬)
+        // 注意：提供技能类型的帖子不显示报酬，所以过滤时不会包含有报酬的提供技能帖子
         if (compensation === 'free') {
             result = result.filter(p => !p.compensation);
         } else if (compensation === 'paid') {
@@ -252,7 +285,7 @@ function applyFilters(posts) {
 
 function clearFilters() {
     if (document.getElementById('filter-text')) document.getElementById('filter-text').value = '';
-    if (document.getElementById('filter-location')) document.getElementById('filter-location').value = '';
+    if (document.getElementById('filter-type')) document.getElementById('filter-type').value = '';
     if (document.getElementById('filter-compensation')) document.getElementById('filter-compensation').value = '';
     if (document.getElementById('sort-by')) document.getElementById('sort-by').value = 'newest';
     renderPosts();
@@ -260,7 +293,7 @@ function clearFilters() {
 
 // 在页面加载后给过滤控件绑定事件（实时过滤）
 window.addEventListener('DOMContentLoaded', () => {
-    ['filter-text','filter-location','filter-compensation','sort-by'].forEach(id => {
+    ['filter-text','filter-type','filter-compensation','sort-by'].forEach(id => {
         const el = document.getElementById(id);
         if (el) el.addEventListener('input', () => renderPosts());
     });
@@ -306,7 +339,46 @@ async function applyForPost(postId) {
     }
 }
 
-// 🌟 【新增：打开收件箱】
+// 🌟 【新增：与技能提供者联系】
+async function contactSkillProvider(postId) {
+    const contactName = localStorage.getItem('currentUser');
+    
+    // 打开输入框让用户输入联系留言
+    const message = prompt('请输入你的联系留言 (例如：我需要学习编程，有时间吗？)：');
+    
+    // 如果用户点了取消，或者什么都没填
+    if (message === null) return; 
+    if (message.trim() === '') {
+        alert('留言不能为空哦！');
+        return;
+    }
+
+    // 把联系请求数据发给后端（使用同样的 /api/apply 接口）
+    try {
+        const response = await fetch('http://localhost:3000/api/apply', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ 
+                post_id: postId, 
+                applicant_name: contactName, 
+                message: message 
+            })
+        });
+        
+        const data = await response.json();
+
+        if (data.success) {
+            alert('🎉 ' + data.message);
+            // 联系成功后，重新拉取帖子
+            fetchPosts();
+        } else {
+            alert('联系失败：' + data.message);
+        }
+    } catch (error) {
+        alert('网络错误，无法提交联系请求！');
+    }
+}
+
 async function openInbox() {
     // 1. 显示弹窗 (把 display 从 none 变成 flex，让它居中显示)
     document.getElementById('inbox-modal').style.display = 'flex';
@@ -476,13 +548,20 @@ function updatePlaceholders() {
     const type = document.getElementById('post-type').value;
     const titleInput = document.getElementById('post-title');
     const contentInput = document.getElementById('post-content');
+    const compensationSection = document.getElementById('compensation-section');
 
     if (type === '寻人组队') {
         titleInput.placeholder = "一句话概括你的需求 (如：急寻一名会弹吉他的同学迎新晚会伴奏)";
         contentInput.placeholder = "详细描述一下任务时间、地点、要求或可能愿意提供的报酬...";
+        compensationSection.style.display = 'flex'; // 显示报酬部分
     } else if (type === '提供技能') {
         titleInput.placeholder = "一句话概括你能做什么 (如：精通什么编程语言/海报设计/视频剪辑)";
         contentInput.placeholder = "详细描述一下你的技能水平、空闲时间以及可能会存在的期望报酬...";
+        compensationSection.style.display = 'none'; // 隐藏报酬部分
+        // 清空报酬数据
+        document.getElementById('post-compensation').checked = false;
+        document.getElementById('post-amount').value = '';
+        document.getElementById('post-amount').style.display = 'none';
     }
 }
 
