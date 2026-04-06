@@ -56,7 +56,6 @@ node server.js # 启动服务器 (运行在 http://localhost:3000)
 ## 工程化亮点
 1. **防 SQL 注入**：后端所有数据库交互均采用 `prepare statement` (预编译语句) 传参。
 2. **关系型数据库设计**：建立 `users`、`posts`、`applications` 三张核心表，清晰映射“一对多”的实体关系。
-3. **沉浸式交互细节**：从登录框的蓝色聚光灯外发光，到发布按钮的右下角防喧宾夺主设计，均严格参考一线互联网大厂的 UI 规范。
 
 ---
 *Developed with ❤️ by Felix | 期待您的使用与反馈*
