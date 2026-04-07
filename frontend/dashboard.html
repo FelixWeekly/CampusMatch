@@ -5,22 +5,28 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Dashboard</title>
     <link rel="stylesheet" href="style.css">
-    <style>
-        /* 针对大厅补充一点点特定样式 */
-        .dashboard-container { max-width: 800px; margin: 40px auto; padding: 20px; }
-        .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
-        .post-box { background: white; padding: 20px; border-radius: 12px; margin-bottom: 20px; box-shadow: 0 4px 6px rgba(0,0,0,0.05); }
-        .post-list { display: flex; flex-direction: column; gap: 15px; }
-        .post-card { background: white; padding: 15px; border-radius: 8px; border: 1px solid #e5e7eb; }
-        .post-tag { background: #dbeafe; color: #1e40af; padding: 4px 8px; border-radius: 4px; font-size: 12px; font-weight: bold; }
-        .post-author { color: #6b7280; font-size: 14px; margin-top: 10px; }
-        textarea { width: 100%; padding: 12px; margin-bottom: 16px; border: 1px solid #d1d5db; border-radius: 6px; resize: vertical; }
-    </style>
 </head>
-<body style="background-color: #f3f4f6; display: block;">
+<body class="dashboard-page-body">
 
-    <div class="dashboard-container">
-        <!-- 头部导航 (使用全新的 dash-header 样式) -->
+    <div class="quick-sidebar" id="quick-sidebar">
+        <div class="quick-progress-line" id="quick-progress-line">
+            <div class="quick-progress-indicator" id="quick-progress-indicator"></div>
+        </div>
+        <button class="quick-nav-item active" id="nav-top" onclick="scrollToSection('top')">
+            <span class="quick-nav-dot"></span>
+            <span class="quick-nav-text">顶部</span>
+        </button>
+        <button class="quick-nav-item" id="nav-posts" onclick="scrollToSection('posts')">
+            <span class="quick-nav-dot"></span>
+            <span class="quick-nav-text">帖子</span>
+        </button>
+        <button class="quick-nav-item" id="nav-team" onclick="scrollToSection('team')">
+            <span class="quick-nav-dot"></span>
+            <span class="quick-nav-text">协作</span>
+        </button>
+    </div>
+
+    <div class="dashboard-container" id="top-section">
         <div class="dash-header">
             <h1 id="welcome-text">欢迎来到大厅</h1>
             <div class="header-btns">
@@ -30,8 +36,21 @@
             </div>
         </div>
 
-        <!-- 发布帖子区域 (使用 publish-card 样式) -->
-        <!-- 发布帖子区域 -->
+        <div class="flow-guide-strip">
+            <button class="flow-guide-card" id="flow-top" onclick="scrollToSection('top')">
+                <span class="flow-guide-step">01</span>
+                <span class="flow-guide-title">发起需求</span>
+            </button>
+            <button class="flow-guide-card" id="flow-posts" onclick="scrollToSection('posts')">
+                <span class="flow-guide-step">02</span>
+                <span class="flow-guide-title">浏览帖子</span>
+            </button>
+            <button class="flow-guide-card" id="flow-team" onclick="scrollToSection('team')">
+                <span class="flow-guide-step">03</span>
+                <span class="flow-guide-title">协作管理</span>
+            </button>
+        </div>
+
         <div class="publish-card">
             <h2 style="font-size: 20px; color: #111827; margin-bottom: 24px;">发布新任务 / 捞人帖 📢</h2>
             
@@ -53,15 +72,17 @@
             </div>
             </div>
             
-            <!-- 🌟 关键：用 flex-end 容器把按钮推到最右边 -->
             <div class="publish-actions">
                 <button class="btn-publish" onclick="createPost()">发 布</button>
             </div>
         </div>
 
-        <!-- 帖子列表展示区域 -->
-        <h2 style="color: #111827; margin-bottom: 12px; font-size: 22px;">最新帖子 📋</h2>
-        <!-- 搜索与筛选栏 -->
+        <div id="posts-section">
+        <div style="display:flex; justify-content:space-between; align-items:center; gap:12px; margin-bottom: 12px; flex-wrap: wrap;">
+            <h2 style="color: #111827; margin:0; font-size: 22px;">最新帖子 📋</h2>
+            <button id="toggle-posts-btn" onclick="togglePostsSection()" style="width:auto; padding:8px 12px; background:#eef2ff; color:#3730a3; border:1px solid #c7d2fe; border-radius:8px; font-size:13px;">收起帖子列表</button>
+        </div>
+        <div id="posts-section-body">
         <div style="display:flex; gap:10px; align-items:flex-start; margin-bottom:18px; flex-wrap:wrap;">
             <input id="filter-text" type="search" placeholder="搜索标题或内容..." style="flex:1; padding:10px; border-radius:8px; border:1px solid #e5e7eb; height:40px; box-sizing:border-box; font-size:14px; line-height:1.4;" />
             <select id="filter-type" style="width:160px; padding:10px; border-radius:8px; border:1px solid #e5e7eb; height:40px; box-sizing:border-box; font-size:14px; line-height:1.4;">
@@ -84,24 +105,53 @@
         <div id="posts-container">
             <p style="text-align:center; color:#9ca3af; padding: 40px;">正在加载帖子...</p>
         </div>
+        <div id="posts-more-wrap" style="display:flex; justify-content:center; margin-top:12px;"></div>
+        </div>
+        </div>
+
+        <div class="team-center" id="team-center-section">
+            <div class="team-center-header">
+                <h2 style="margin:0; font-size:22px; color:#111827;">团队协作流程预览</h2>
+                <div style="display:flex; gap:8px; align-items:center;">
+                    <button class="btn-inbox" style="padding:8px 14px;" onclick="loadProjectPreviews()">刷新</button>
+                </div>
+            </div>
+            <p style="margin: 10px 0 18px 0; color:#6b7280; font-size:14px;">这里提供流程预览与快速编辑，完整团队治理、监督与反馈在下方唯一入口进入。</p>
+
+            <div class="team-center-grid">
+                <div class="project-list-panel">
+                    <h3 style="margin:0 0 12px 0; font-size:16px;">我的项目预览</h3>
+                    <div id="my-projects-list">
+                        <p style="color:#9ca3af; font-size:14px;">暂无项目记录</p>
+                    </div>
+                </div>
+
+                <div class="project-detail-panel" id="project-detail-panel">
+                    <p style="color:#9ca3af; font-size:14px;">选择左侧项目后，这里会展示轻量流程预览与快速操作。</p>
+                </div>
+            </div>
+        </div>
     </div>
 
-    <!-- 🌟 新增：消息弹窗 (默认用 display: none 隐藏) -->
+    <aside class="right-center-entry" id="right-center-entry" onclick="openFullTeamCenter()" title="进入完整团队管理中心">
+        <span class="right-center-icon">◍</span>
+        <span class="right-center-title">团队管理</span>
+        <span class="right-center-desc">完整流程</span>
+    </aside>
+
     <div id="inbox-modal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); justify-content: center; align-items: center;">
         <div style="background: white; padding: 30px; border-radius: 12px; width: 90%; max-width: 500px; max-height: 80vh; overflow-y: auto;">
             <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #e5e7eb; padding-bottom: 10px; margin-bottom: 15px;">
                 <h2 style="margin: 0;">🔔 我的收件箱</h2>
                 <button onclick="closeInbox()" style="background: none; border: none; color: #9ca3af; font-size: 24px; cursor: pointer; width: auto; padding: 0;">&times;</button>
             </div>
-            
-            <!-- 消息列表会被填充到这里 -->
+
             <div id="inbox-messages">
                 <p>加载中...</p>
             </div>
         </div>
     </div>
 
-    <!-- 🌟 新增：简单私聊弹窗 -->
     <div id="chat-modal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.5); justify-content:center; align-items:center; z-index:100;">
         <div style="background:white; width:90%; max-width:560px; border-radius:12px; max-height:80vh; overflow:hidden; display:flex; flex-direction:column;">
             <div style="padding:14px 18px; border-bottom:1px solid #e5e7eb; display:flex; justify-content:space-between; align-items:center; gap:16px;">

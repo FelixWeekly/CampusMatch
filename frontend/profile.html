@@ -107,10 +107,10 @@
         <!-- 右侧评价 -->
         <div class="reviews-card">
             <div class="rating-header">
-                <h2 style="font-size: 20px; margin: 0;">信用评价与反馈</h2>
+                <h2 style="font-size: 20px; margin: 0;">任务结项评价</h2>
                 <div style="text-align: right;">
                     <div class="average-score" id="display-avg">0.0 <span style="font-size: 20px;">⭐</span></div>
-                    <span style="color: #6b7280; font-size: 14px;">综合评分</span>
+                    <span style="color: #6b7280; font-size: 14px;">加权总分 / 星级</span>
                 </div>
             </div>
             <div id="reviews-list">
@@ -131,25 +131,6 @@
             <div style="display: flex; gap: 10px; justify-content: flex-end;">
                 <button onclick="closeModal('edit-modal')" style="background: #f3f4f6; color: #374151; padding: 10px 20px; border:none; border-radius: 8px; cursor: pointer;">取消</button>
                 <button onclick="saveProfile()" style="background: #10b981; color: white; padding: 10px 20px; border:none; border-radius: 8px; font-weight: bold; cursor: pointer;">保存资料</button>
-            </div>
-        </div>
-    </div>
-
-    <!-- 弹窗：写评价 -->
-    <div id="review-modal" class="modal">
-        <div class="modal-content">
-            <h2 style="margin-bottom: 20px;">🌟 留下你的评价</h2>
-            <select id="review-rating">
-                <option value="5">⭐⭐⭐⭐⭐ 极其靠谱 (5星)</option>
-                <option value="4">⭐⭐⭐⭐ 体验很好 (4星)</option>
-                <option value="3">⭐⭐⭐ 中规中矩 (3星)</option>
-                <option value="2">⭐⭐ 沟通不畅 (2星)</option>
-                <option value="1">⭐ 踩雷警告 (1星)</option>
-            </select>
-            <textarea id="review-comment" rows="4" placeholder="写下你们合作的体验，给其他同学作为参考..."></textarea>
-            <div style="display: flex; gap: 10px; justify-content: flex-end;">
-                <button onclick="closeModal('review-modal')" style="background: #f3f4f6; color: #374151; padding: 10px 20px; border:none; border-radius: 8px; cursor: pointer;">取消</button>
-                <button onclick="submitReview()" style="background: #10b981; color: white; padding: 10px 20px; border:none; border-radius: 8px; font-weight: bold; cursor: pointer;">提交评价</button>
             </div>
         </div>
     </div>

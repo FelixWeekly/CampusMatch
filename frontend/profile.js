@@ -53,39 +53,40 @@ async function fetchProfileData() {
                 document.getElementById('edit-bio').value = u.bio === '这个人很懒，还没写自我介绍~' ? '' : u.bio;
                 document.getElementById('edit-portfolio').value = u.portfolio;
             } else {
-                // 看别人：评价按钮 + 私信按钮
+                // 看别人：仅保留私信按钮，评分入口统一迁移到项目结项后
                 btnContainer.innerHTML = `
-                    <button onclick="openModal('review-modal')" style="width: 100%; background: #10b981; color: white; padding: 12px; border-radius: 8px; font-weight: bold; margin-bottom: 10px;">🌟 写评价 / 反馈</button>
                     <button onclick="openChatWithUser('${viewingUser}')" style="width: 100%; background: #3b82f6; color: white; padding: 12px; border-radius: 8px; font-weight: bold;">💬 发私信</button>
                 `;
             }
 
             // 3. 渲染右侧评价列表
-            document.getElementById('display-avg').innerHTML = `${data.avgRating} <span style="font-size: 20px;">⭐</span>`;
+            document.getElementById('display-avg').innerHTML = `${data.avgFinalScore} <span style="font-size: 16px; color:#6b7280;">/100</span> <span style="font-size: 18px;">(${data.avgStar}⭐)</span>`;
             const reviewsList = document.getElementById('reviews-list');
             if (data.reviews.length > 0) {
                 reviewsList.innerHTML = '';
                 data.reviews.forEach(r => {
-                    const starsStr = '⭐'.repeat(r.rating);
-                    // 🌟 核心：这条评语是我写的吗？是的话，就给他一个红色的删除按钮！
-                    const deleteBtn = (r.reviewer === currentUser) 
-                        ? `<button onclick="deleteReview(${r.id})" style="background: none; border: none; color: #ef4444; font-size: 13px; cursor: pointer; text-decoration: underline;">删除</button>` 
-                        : '';
+                    const starsStr = '⭐'.repeat(r.rating || 0);
+                    const finalScoreText = (r.final_score || 0).toFixed(1);
+                    const objectiveText = (r.objective_score || 0).toFixed(1);
+                    const subjectiveText = (r.subjective_score || 0).toFixed(1);
 
                     reviewsList.innerHTML += `
                         <div class="review-item">
                             <div style="display: flex; justify-content: space-between; margin-bottom: 8px; align-items: center;">
                                 <div>
                                     <strong>${r.reviewer}</strong>
-                                    <span class="stars" style="margin-left: 8px;">${starsStr}</span>
+                                    <span style="margin-left: 8px; color:#6b7280; font-size:12px;">项目 #${r.project_id}</span>
                                 </div>
-                                ${deleteBtn}
+                                <span class="stars">${starsStr}</span>
                             </div>
-                            <p style="color: #4b5563; font-size: 14px; margin: 0;">${r.comment}</p>
+                            <p style="color: #4b5563; font-size: 14px; margin: 0 0 8px 0;">${r.comment || '无评语'}</p>
+                            <p style="color:#111827; font-size:13px; margin:0;">客观分 ${objectiveText} + 主观分 ${subjectiveText} => 总分 ${finalScoreText}</p>
                             <p style="color: #9ca3af; font-size: 12px; margin-top: 8px;">${r.created_at}</p>
                         </div>
                     `;
                 });
+            } else {
+                reviewsList.innerHTML = '<p style="color: #9ca3af; text-align: center; padding: 20px;">暂无任务结项评价</p>';
             }
         }
     } catch (error) {
@@ -119,50 +120,6 @@ async function saveProfile() {
             fetchProfileData(); // 刷新页面数据
         }
     } catch (err) { alert('保存失败！'); }
-}
-
-// 提交评价
-async function submitReview() {
-    const rating = document.getElementById('review-rating').value;
-    const comment = document.getElementById('review-comment').value;
-
-    if (!comment.trim()) { alert('评语不能为空哦！'); return; }
-
-    try {
-        const res = await fetch('http://localhost:3000/api/reviews', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ reviewer: currentUser, reviewee: viewingUser, rating: parseInt(rating), comment })
-        });
-        const data = await res.json();
-        if (data.success) {
-            alert('评价提交成功！');
-            closeModal('review-modal');
-            fetchProfileData(); // 刷新星级和列表
-        }
-    } catch (err) { alert('提交评价失败！'); }
-}
-
-// 🌟 【新增：删除评价】
-async function deleteReview(reviewId) {
-    if (!confirm('确定要删除这条评价吗？')) return;
-    
-    try {
-        const res = await fetch(`http://localhost:3000/api/reviews/${reviewId}`, {
-            method: 'DELETE',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ reviewer: currentUser }) // 告诉后端是谁要删的
-        });
-        const data = await res.json();
-        if (data.success) {
-            alert('🗑️ 评价已删除！');
-            fetchProfileData(); // 重新拉取主页数据（星级评分会自动重新计算！）
-        } else {
-            alert('删除失败：' + data.message);
-        }
-    } catch (err) {
-        alert('网络错误，删除失败！');
-    }
 }
 
 // ===== 私聊功能 =====

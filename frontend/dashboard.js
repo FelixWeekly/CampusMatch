@@ -15,6 +15,7 @@ window.onload = function() {
 
     // 3. 去后端抓取所有的帖子
     fetchPosts();
+    loadMyProjects();
     
     // 4. 绑定补偿复选框事件
     const compensationCheckbox = document.getElementById('post-compensation');
@@ -99,6 +100,142 @@ async function createPost() {
 
 // 本地缓存所有帖子，便于过滤/排序
 let allPosts = [];
+let postsCollapsed = false;
+let postsExpanded = false;
+const postsPreviewLimit = 5;
+let navTicking = false;
+let lastScrollY = 0;
+let lastScrollTs = Date.now();
+let indicatorResetTimer = null;
+
+function scrollToSection(section) {
+    if (section === 'top') return scrollToTop();
+    if (section === 'posts') {
+        const posts = document.getElementById('posts-section');
+        if (posts) posts.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        return;
+    }
+    if (section === 'team') return scrollToTeamCenter();
+}
+
+function scrollToTeamCenter() {
+    const section = document.getElementById('team-center-section');
+    if (section) {
+        section.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+}
+
+function scrollToTop() {
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+
+function updateQuickNavActive() {
+    const topEl = document.getElementById('top-section');
+    const teamEl = document.getElementById('team-center-section');
+    const postsRect = document.getElementById('posts-section')?.getBoundingClientRect();
+    const teamRect = teamEl?.getBoundingClientRect();
+    const viewportMark = window.innerHeight * 0.3;
+    let active = 'top';
+
+    if (teamRect && teamRect.top <= viewportMark) {
+        active = 'team';
+    } else if (postsRect && postsRect.top <= viewportMark) {
+        active = 'posts';
+    }
+
+    ['top', 'posts', 'team'].forEach((key) => {
+        const el = document.getElementById(`nav-${key}`);
+        if (!el) return;
+        if (key === active) el.classList.add('active');
+        else el.classList.remove('active');
+    });
+
+    const indicator = document.getElementById('quick-progress-indicator');
+    if (indicator && topEl && teamEl) {
+        const topY = topEl.getBoundingClientRect().top + window.scrollY;
+        const teamY = teamEl.getBoundingClientRect().top + window.scrollY;
+        const denominator = Math.max(1, teamY - topY);
+        const raw = ((window.scrollY - topY) / denominator) * 100;
+        const percent = Math.max(0, Math.min(100, raw));
+        indicator.style.top = `${percent}%`;
+    }
+}
+
+function scheduleQuickNavUpdate() {
+    const now = Date.now();
+    const dy = Math.abs(window.scrollY - lastScrollY);
+    const dt = Math.max(1, now - lastScrollTs);
+    const velocity = dy / dt;
+    const indicator = document.getElementById('quick-progress-indicator');
+
+    if (indicator) {
+        const strength = Math.min(0.35, velocity * 0.22);
+        const scaleY = (1 + strength).toFixed(3);
+        const scaleX = (1 - strength * 0.42).toFixed(3);
+        indicator.style.setProperty('--indicator-scale-y', scaleY);
+        indicator.style.setProperty('--indicator-scale-x', scaleX);
+
+        if (indicatorResetTimer) clearTimeout(indicatorResetTimer);
+        indicatorResetTimer = setTimeout(() => {
+            indicator.style.setProperty('--indicator-scale-y', '1');
+            indicator.style.setProperty('--indicator-scale-x', '1');
+        }, 140);
+    }
+
+    lastScrollY = window.scrollY;
+    lastScrollTs = now;
+
+    if (navTicking) return;
+    navTicking = true;
+    requestAnimationFrame(() => {
+        updateQuickNavActive();
+        navTicking = false;
+    });
+}
+
+window.addEventListener('scroll', scheduleQuickNavUpdate);
+window.addEventListener('resize', scheduleQuickNavUpdate);
+
+function togglePostsSection() {
+    const body = document.getElementById('posts-section-body');
+    const btn = document.getElementById('toggle-posts-btn');
+    if (!body || !btn) return;
+
+    postsCollapsed = !postsCollapsed;
+
+    if (postsCollapsed) {
+        body.style.transition = 'max-height 0.24s cubic-bezier(0.4, 0, 1, 1), opacity 0.18s ease-out, transform 0.18s ease-out';
+        body.style.maxHeight = `${body.scrollHeight}px`;
+        // Force reflow to ensure transition starts from current height.
+        void body.offsetHeight;
+        body.classList.add('collapsed');
+        body.style.maxHeight = '0px';
+    } else {
+        body.style.transition = 'max-height 0.46s cubic-bezier(0.22, 1, 0.36, 1), opacity 0.26s ease, transform 0.26s ease';
+        body.classList.remove('collapsed');
+        body.style.maxHeight = `${body.scrollHeight}px`;
+        const onEnd = function(e) {
+            if (e.propertyName === 'max-height' && !postsCollapsed) {
+                body.style.maxHeight = 'none';
+                body.style.transition = '';
+                body.removeEventListener('transitionend', onEnd);
+            }
+        };
+        body.addEventListener('transitionend', onEnd);
+    }
+
+    btn.innerText = postsCollapsed ? '展开帖子列表' : '收起帖子列表';
+}
+
+function togglePostsExpand() {
+    const wasExpanded = postsExpanded;
+    postsExpanded = !postsExpanded;
+    renderPosts();
+    if (wasExpanded) {
+        const posts = document.getElementById('posts-section');
+        if (posts) posts.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+}
 
 // 获取并显示帖子列表
 async function fetchPosts() {
@@ -106,7 +243,7 @@ async function fetchPosts() {
         const currentUser = localStorage.getItem('currentUser');
         
         // 发送请求，带上 user 参数，让后端帮我们算“已报名”状态
-        const response = await fetch(`http://localhost:3000/api/posts?user=${currentUser}`);
+        const response = await fetch(`http://localhost:3000/api/posts?user=${encodeURIComponent(currentUser)}`);
         const data = await response.json();
 
         if (data.success) {
@@ -130,10 +267,12 @@ async function fetchPosts() {
 // 渲染帖子（会应用当前过滤器和排序）
 function renderPosts() {
     const postsContainer = document.getElementById('posts-container');
+    const moreWrap = document.getElementById('posts-more-wrap');
     postsContainer.innerHTML = '';
 
     if (!allPosts || allPosts.length === 0) {
         postsContainer.innerHTML = '<p style="text-align:center; color:#9ca3af; padding: 40px;">目前还没有人发帖，快来抢沙发吧！</p>';
+        if (moreWrap) moreWrap.innerHTML = '';
         return;
     }
 
@@ -141,12 +280,15 @@ function renderPosts() {
 
     if (filtered.length === 0) {
         postsContainer.innerHTML = '<p style="text-align:center; color:#9ca3af; padding: 40px;">未找到匹配的帖子。</p>';
+        if (moreWrap) moreWrap.innerHTML = '';
         return;
     }
 
     const currentUser = localStorage.getItem('currentUser');
 
-    filtered.forEach(post => {
+    const postsToRender = postsExpanded ? filtered : filtered.slice(0, postsPreviewLimit);
+
+    postsToRender.forEach(post => {
         const isMyPost = (post.author === currentUser);
         
         // 判断是否是"提供技能"类型
@@ -168,9 +310,14 @@ function renderPosts() {
                 // 还没联系过，显示与我联系按钮
                 actionBtn = `<button onclick="contactSkillProvider(${post.id})" class="btn-apply">💬 与我联系</button>`;
             }
-        } else if (post.has_applied) {
-            // 已报名状态
-            actionBtn = `<button disabled class="btn-applied">✅ 已报名</button>`;
+        } else if (post.my_application_status === 'accepted') {
+            actionBtn = `<button disabled class="btn-applied" style="color:#065f46; background:#d1fae5;">✅ 已通过入队</button>`;
+        } else if (post.my_application_status === 'rejected') {
+            actionBtn = `<button disabled class="btn-applied" style="color:#991b1b; background:#fee2e2;">❌ 已被拒绝</button>`;
+        } else if (post.my_application_status === 'pending') {
+            actionBtn = `<button disabled class="btn-applied" style="color:#92400e; background:#fef3c7;">🕒 审批中</button>`;
+        } else if (post.project_status && post.project_status !== 'recruiting') {
+            actionBtn = `<button disabled class="btn-applied">⛔ 招募已结束</button>`;
         } else {
             // 还没报名
             actionBtn = `<button onclick="applyForPost(${post.id})" class="btn-apply">✋ 我要报名</button>`;
@@ -204,10 +351,11 @@ function renderPosts() {
         let applicantBadge = '';
         if (!isSkillPost) {
             const applicantCount = post.applicant_count || 0;
+            const acceptedCount = post.accepted_count || 0;
             applicantBadge = `
                 <div style="display: flex; align-items: center; gap: 8px; padding: 8px 12px; background: #e0f2fe; border-radius: 8px; border: 1px solid #0ea5e9; margin-left: 12px;">
                     <span style="font-size: 14px; font-weight: bold; color: #0369a1;">👥</span>
-                    <span style="font-size: 13px; font-weight: bold; color: #0369a1;">${applicantCount} 人已报名</span>
+                    <span style="font-size: 13px; font-weight: bold; color: #0369a1;">${applicantCount} 报名 / ${acceptedCount} 入队</span>
                 </div>
             `;
         }
@@ -242,6 +390,23 @@ function renderPosts() {
         `;
         postsContainer.innerHTML += postHTML;
     });
+
+    if (moreWrap) {
+        if (filtered.length > postsPreviewLimit) {
+            const shown = postsToRender.length;
+            const total = filtered.length;
+            const remain = total - shown;
+            const btnText = postsExpanded ? '收起更多' : `显示更多 (${remain})`;
+            moreWrap.innerHTML = `
+                <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap; justify-content:center;">
+                    <span style="font-size:12px; color:#64748b;">已显示 ${shown} / ${total}</span>
+                    <button onclick="togglePostsExpand()" style="width:auto; padding:8px 14px; background:#f8fafc; color:#334155; border:1px solid #cbd5e1; border-radius:8px; font-size:13px;">${btnText}</button>
+                </div>
+            `;
+        } else {
+            moreWrap.innerHTML = '';
+        }
+    }
 }
 
 // 应用过滤器并返回新数组
@@ -284,6 +449,7 @@ function applyFilters(posts) {
 }
 
 function clearFilters() {
+    postsExpanded = false;
     if (document.getElementById('filter-text')) document.getElementById('filter-text').value = '';
     if (document.getElementById('filter-type')) document.getElementById('filter-type').value = '';
     if (document.getElementById('filter-compensation')) document.getElementById('filter-compensation').value = '';
@@ -295,8 +461,97 @@ function clearFilters() {
 window.addEventListener('DOMContentLoaded', () => {
     ['filter-text','filter-type','filter-compensation','sort-by'].forEach(id => {
         const el = document.getElementById(id);
-        if (el) el.addEventListener('input', () => renderPosts());
+        if (el) el.addEventListener('input', () => {
+            postsExpanded = false;
+            renderPosts();
+        });
     });
+
+    const rightEntry = document.getElementById('right-center-entry');
+    if (rightEntry) {
+        rightEntry.style.setProperty('--entry-y', '0px');
+        rightEntry.style.setProperty('--entry-x', '0px');
+        rightEntry.style.setProperty('--entry-rot', '0deg');
+        rightEntry.style.setProperty('--entry-scale', '1');
+
+        let velocity = 0;
+        let displacement = 0;
+        let target = 0;
+        let displayX = 0;
+        let displayRot = 0;
+        let leavingKick = false;
+        let rafId = null;
+
+        const clamp = (num, min, max) => Math.max(min, Math.min(max, num));
+
+        const mapWheelImpulse = (deltaY) => {
+            const sign = deltaY >= 0 ? 1 : -1;
+            const abs = Math.abs(deltaY);
+
+            if (abs <= 35) return deltaY * 0.014;
+            if (abs <= 120) {
+                return sign * (35 * 0.014 + (abs - 35) * 0.009);
+            }
+            return sign * (35 * 0.014 + 85 * 0.009 + (abs - 120) * 0.0048);
+        };
+
+        const animateEntry = () => {
+            const spring = 0.102;
+            const damping = 0.848;
+
+            const force = (target - displacement) * spring;
+            velocity = (velocity + force) * damping;
+            displacement += velocity;
+            target *= 0.88;
+
+            const targetX = clamp(velocity * -0.92, -6.2, 6.2);
+            const targetRot = clamp(velocity * -0.74, -6.9, 6.9);
+
+            // x/rot 跟随 y 半拍，形成更自然的惯性层次
+            displayX += (targetX - displayX) * 0.18;
+            displayRot += (targetRot - displayRot) * 0.16;
+
+            const scale = 1 + clamp(Math.abs(velocity) * 0.015, 0, 0.065);
+
+            rightEntry.style.setProperty('--entry-y', `${displacement.toFixed(2)}px`);
+            rightEntry.style.setProperty('--entry-x', `${displayX.toFixed(2)}px`);
+            rightEntry.style.setProperty('--entry-rot', `${displayRot.toFixed(2)}deg`);
+            rightEntry.style.setProperty('--entry-scale', scale.toFixed(3));
+
+            if (Math.abs(velocity) < 0.012 && Math.abs(displacement) < 0.04 && Math.abs(target) < 0.04) {
+                if (leavingKick) {
+                    leavingKick = false;
+                    target = -displacement * 0.35;
+                    rafId = requestAnimationFrame(animateEntry);
+                    return;
+                }
+                rightEntry.style.setProperty('--entry-y', '0px');
+                rightEntry.style.setProperty('--entry-x', '0px');
+                rightEntry.style.setProperty('--entry-rot', '0deg');
+                rightEntry.style.setProperty('--entry-scale', '1');
+                displayX = 0;
+                displayRot = 0;
+                rafId = null;
+                return;
+            }
+
+            rafId = requestAnimationFrame(animateEntry);
+        };
+
+        window.addEventListener('wheel', (e) => {
+            const impulse = clamp(mapWheelImpulse(e.deltaY), -12.2, 12.2);
+            target += impulse;
+            target = clamp(target, -23, 23);
+            if (!rafId) rafId = requestAnimationFrame(animateEntry);
+        }, { passive: true });
+
+        rightEntry.addEventListener('mouseleave', () => {
+            leavingKick = true;
+            if (!rafId) rafId = requestAnimationFrame(animateEntry);
+        });
+    }
+
+    updateQuickNavActive();
 });
 
 // 🌟 【新增：点击报名按钮触发的函数】
@@ -389,7 +644,7 @@ async function openInbox() {
 
     try {
         // 2. 向后端请求属于我的消息 (注意 URL 后面带了 ?user=xxx)
-        const response = await fetch(`http://localhost:3000/api/my-messages?user=${currentUser}`);
+        const response = await fetch(`http://localhost:3000/api/my-messages?user=${encodeURIComponent(currentUser)}`);
         const data = await response.json();
 
         if (data.success) {
@@ -403,16 +658,29 @@ async function openInbox() {
 
             // 如果有消息，循环渲染出来
             data.data.forEach(msg => {
+                const isTeamRecruit = msg.type === '寻人组队';
+                const isPending = msg.status === 'pending';
+                const statusText = msg.status === 'accepted' ? '已通过' : (msg.status === 'rejected' ? '已拒绝' : '待处理');
+                const statusColor = msg.status === 'accepted' ? '#059669' : (msg.status === 'rejected' ? '#dc2626' : '#d97706');
+                const decisionBtns = (isTeamRecruit && isPending)
+                    ? `
+                        <button onclick="decideApplication(${msg.application_id}, 'accepted')" style="width:auto; white-space:nowrap; display:inline-flex; align-items:center; justify-content:center; padding:6px 10px; border-radius:6px; background:#10b981; color:white; border:none; cursor:pointer; font-size:13px; line-height:1;">通过入队</button>
+                        <button onclick="decideApplication(${msg.application_id}, 'rejected')" style="width:auto; white-space:nowrap; display:inline-flex; align-items:center; justify-content:center; padding:6px 10px; border-radius:6px; background:#ef4444; color:white; border:none; cursor:pointer; font-size:13px; line-height:1;">拒绝</button>
+                    `
+                    : '';
+
                 const msgHTML = `
                     <div style="background: #f9fafb; padding: 15px; border-radius: 8px; margin-bottom: 10px; border-left: 4px solid #3b82f6; display:flex; flex-direction:column; gap:8px;">
                         <div style="display:flex; justify-content:space-between; align-items:center; gap:10px;">
                             <p style="font-size: 14px; color: #6b7280; margin: 0;">
                                 <a href="profile.html?user=${msg.applicant_name}" style="color: #3b82f6; text-decoration: none; font-weight: bold;">${msg.applicant_name}</a> 申请了你的帖子: <span style="color: #1f2937;">《${msg.title}》</span>
                             </p>
-                            <div style="display:flex; gap:8px;">
-                                <button onclick="openChat('${msg.applicant_name}','${msg.title.replace(/'/g,"\\'")}' )" style="padding:6px 10px; border-radius:6px; background:#3b82f6; color:white; border:none; cursor:pointer;">私信</button>
+                            <div style="display:flex; gap:8px; align-items:center; flex-wrap:nowrap; white-space:nowrap;">
+                                ${decisionBtns}
+                                <button onclick="openChat('${msg.applicant_name}','${msg.title.replace(/'/g,"\\'")}' )" style="width:auto; white-space:nowrap; display:inline-flex; align-items:center; justify-content:center; padding:6px 10px; border-radius:6px; background:#3b82f6; color:white; border:none; cursor:pointer; font-size:13px; line-height:1;">私信</button>
                             </div>
                         </div>
+                        <p style="margin:0; font-size:12px; color:${statusColor}; font-weight:700;">审批状态：${statusText}</p>
                         <p style="background: white; padding: 10px; border-radius: 6px; border: 1px solid #e5e7eb; margin: 0;">
                             💬 留言: ${msg.message}
                         </p>
@@ -593,4 +861,243 @@ async function deletePost(postId) {
     } catch (error) {
         alert('网络错误，删除失败！');
     }
+}
+
+async function decideApplication(applicationId, decision) {
+    const currentUser = localStorage.getItem('currentUser');
+    try {
+        const response = await fetch(`http://localhost:3000/api/applications/${applicationId}/decision`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ owner: currentUser, decision })
+        });
+        const data = await response.json();
+        if (!data.success) {
+            alert(data.message || '审批失败');
+            return;
+        }
+        alert(data.message || '审批完成');
+        openInbox();
+        fetchPosts();
+        loadMyProjects();
+    } catch (err) {
+        alert('网络错误，审批失败');
+    }
+}
+
+let myProjects = [];
+let activeProjectId = null;
+
+function statusLabel(status) {
+    if (status === 'recruiting') return '招募中';
+    if (status === 'executing') return '执行中';
+    if (status === 'completed') return '已结项';
+    return status || '未知';
+}
+
+async function loadMyProjects() {
+    return loadProjectPreviews();
+}
+
+function renderProjectList() {
+    const box = document.getElementById('my-projects-list');
+    if (!box) return;
+
+    if (!myProjects.length) {
+        box.innerHTML = '<p style="color:#9ca3af; font-size:14px;">暂无项目记录</p>';
+        return;
+    }
+
+    box.innerHTML = '';
+    myProjects.forEach((project) => {
+        const el = document.createElement('div');
+        el.className = 'project-mini-card' + (project.id === activeProjectId ? ' active' : '');
+        el.innerHTML = `
+            <div style="font-weight:700; color:#1f2937; margin-bottom:6px;">${project.title}</div>
+            <div style="font-size:12px; color:#6b7280; margin-bottom:4px;">状态：${statusLabel(project.status)}</div>
+            <div style="font-size:12px; color:#6b7280;">成员 ${project.member_count} | 待办里程碑 ${project.pending_milestones}</div>
+        `;
+        el.onclick = async function() {
+            activeProjectId = project.id;
+            renderProjectList();
+            await loadProjectDetail(project.id);
+        };
+        box.appendChild(el);
+    });
+}
+
+function renderLifecycle(status) {
+    const steps = [
+        { key: 'initiated', text: '发起' },
+        { key: 'recruiting', text: '招募' },
+        { key: 'executing', text: '执行' },
+        { key: 'completed', text: '结项' }
+    ];
+    const activeIndex = steps.findIndex((s) => s.key === status);
+
+    return `<div class="lifecycle-track">${steps.map((step, index) => {
+        const active = index <= activeIndex ? ' active' : '';
+        return `<span class="life-step${active}">${step.text}</span>`;
+    }).join('')}</div>`;
+}
+
+async function loadProjectDetail(projectId) {
+    const currentUser = localStorage.getItem('currentUser');
+    const panel = document.getElementById('project-detail-panel');
+    if (!panel) return;
+
+    panel.innerHTML = '<p style="color:#9ca3af;">正在加载项目详情...</p>';
+
+    try {
+        const response = await fetch(`http://localhost:3000/api/projects/${projectId}/overview?user=${encodeURIComponent(currentUser)}`);
+        const data = await response.json();
+        if (!data.success) {
+            panel.innerHTML = `<p style="color:#ef4444;">${data.message || '加载失败'}</p>`;
+            return;
+        }
+
+        const detail = data.data;
+        const project = detail.project;
+        const checkins = detail.recent_checkins || [];
+        const events = detail.recent_events || [];
+        const canManage = detail.can_manage;
+
+        panel.innerHTML = `
+            <div style="display:flex; justify-content:space-between; align-items:center; gap:12px; flex-wrap:wrap;">
+                <h3 style="margin:0; font-size:18px; color:#111827;">${project.title}</h3>
+                <span style="font-size:12px; color:#374151; background:#e5e7eb; border-radius:999px; padding:6px 10px;">${statusLabel(project.status)}</span>
+            </div>
+
+            ${renderLifecycle(project.status)}
+
+            <div style="display:flex; gap:8px; flex-wrap:wrap; margin-bottom:12px;">
+                ${canManage ? `
+                    <button onclick="changeProjectStatus(${project.id}, 'recruiting')" style="width:auto; padding:6px 10px; font-size:12px; background:#e5e7eb; color:#111827;">设为招募</button>
+                    <button onclick="changeProjectStatus(${project.id}, 'executing')" style="width:auto; padding:6px 10px; font-size:12px; background:#2563eb; color:#fff;">进入执行</button>
+                    <button onclick="changeProjectStatus(${project.id}, 'completed')" style="width:auto; padding:6px 10px; font-size:12px; background:#111827; color:#fff;">结项</button>
+                ` : '<span style="font-size:12px; color:#6b7280;">仅队长可切换项目阶段</span>'}
+            </div>
+
+            <div style="margin-bottom:14px;">
+                <strong style="display:block; margin-bottom:6px;">流程概览</strong>
+                <div style="display:flex; gap:8px; flex-wrap:wrap;">
+                    <span style="font-size:12px; background:#eef2ff; color:#1e3a8a; padding:4px 8px; border-radius:999px;">成员 ${detail.member_count}</span>
+                    <span style="font-size:12px; background:#ecfeff; color:#155e75; padding:4px 8px; border-radius:999px;">里程碑 ${detail.milestone_completed}/${detail.milestone_total}</span>
+                    <span style="font-size:12px; background:#fef9c3; color:#854d0e; padding:4px 8px; border-radius:999px;">待处理反馈 ${detail.open_feedback}</span>
+                </div>
+            </div>
+
+            <div style="margin-bottom:14px;">
+                <strong style="display:block; margin-bottom:6px;">快速打卡</strong>
+                <div style="display:flex; gap:8px; flex-wrap:wrap; margin-bottom:8px;">
+                    <input id="checkin-note" type="text" placeholder="今天完成了什么？" style="flex:1; min-width:220px; padding:8px; margin:0;" />
+                    <input id="checkin-completion" type="number" min="0" max="100" placeholder="完成度(0-100)" style="width:160px; padding:8px; margin:0;" />
+                    <button onclick="submitCheckin(${project.id})" style="width:auto; padding:8px 12px; font-size:12px;">提交打卡</button>
+                </div>
+                <div style="max-height:160px; overflow:auto; background:#fff; border:1px solid #e5e7eb; border-radius:8px; padding:8px;">
+                    ${checkins.length ? checkins.map((c) => `<div style="display:flex; justify-content:space-between; gap:10px; align-items:flex-start; font-size:12px; color:#374151; padding:6px 0; border-bottom:1px dashed #e5e7eb;"><div><strong>${c.user_name}</strong> (${c.task_completion}%)：${c.progress_note || '无'} <span style="color:#9ca3af;">${c.created_at}</span></div>${canManage ? `<button onclick="deleteProjectCheckin(${project.id}, ${c.id})" style="width:auto; padding:4px 8px; font-size:11px; background:#fef2f2; color:#b91c1c; border:1px solid #fecaca; border-radius:6px;">删除</button>` : ''}</div>`).join('') : '<span style="font-size:12px; color:#9ca3af;">暂无打卡记录</span>'}
+                </div>
+            </div>
+
+            <div>
+                <strong style="display:block; margin-bottom:6px;">最近监督事件</strong>
+                <div style="max-height:140px; overflow:auto; background:#fff; border:1px solid #e5e7eb; border-radius:8px; padding:8px; margin-bottom:10px;">
+                    ${events.length ? events.map((e) => `<div style="font-size:12px; color:#334155; padding:6px 0; border-bottom:1px dashed #e5e7eb;"><strong>[${e.severity || 'medium'}]</strong> ${e.title} · ${e.actor || '系统'} <span style="color:#94a3b8;">${e.created_at}</span></div>`).join('') : '<span style="font-size:12px; color:#9ca3af;">暂无监督事件</span>'}
+                </div>
+                <button onclick="openFullTeamCenter(${project.id})" style="width:auto; padding:8px 12px; font-size:12px; background:#0f172a; color:#fff;">进入完整团队管理与监督反馈</button>
+            </div>
+        `;
+    } catch (err) {
+        panel.innerHTML = '<p style="color:#ef4444;">网络错误，加载失败</p>';
+    }
+}
+
+async function changeProjectStatus(projectId, status) {
+    const currentUser = localStorage.getItem('currentUser');
+    try {
+        const response = await fetch(`http://localhost:3000/api/projects/${projectId}/status`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ actor: currentUser, status })
+        });
+        const data = await response.json();
+        if (!data.success) return alert(data.message || '状态更新失败');
+        await loadMyProjects();
+    } catch (err) {
+        alert('网络错误，状态更新失败');
+    }
+}
+
+async function submitCheckin(projectId) {
+    const currentUser = localStorage.getItem('currentUser');
+    const note = document.getElementById('checkin-note')?.value?.trim() || '';
+    const completion = document.getElementById('checkin-completion')?.value;
+
+    try {
+        const response = await fetch(`http://localhost:3000/api/projects/${projectId}/checkins`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ user: currentUser, progress_note: note, task_completion: Number(completion) })
+        });
+        const data = await response.json();
+        if (!data.success) return alert(data.message || '打卡失败');
+        await loadProjectDetail(projectId);
+        await loadProjectPreviews();
+    } catch (err) {
+        alert('网络错误，打卡失败');
+    }
+}
+
+async function deleteProjectCheckin(projectId, checkinId) {
+    const currentUser = localStorage.getItem('currentUser');
+    if (!confirm('确定删除这条打卡记录吗？')) return;
+
+    try {
+        const response = await fetch(`http://localhost:3000/api/projects/${projectId}/checkins/${checkinId}`, {
+            method: 'DELETE',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ actor: currentUser })
+        });
+        const data = await response.json();
+        if (!data.success) return alert(data.message || '删除失败');
+        await loadProjectDetail(projectId);
+        await loadProjectPreviews();
+    } catch (err) {
+        alert('网络错误，删除失败');
+    }
+}
+
+async function loadProjectPreviews() {
+    const currentUser = localStorage.getItem('currentUser');
+    if (!currentUser) return;
+
+    try {
+        const response = await fetch(`http://localhost:3000/api/projects-preview?user=${encodeURIComponent(currentUser)}`);
+        const data = await response.json();
+        if (!data.success) return;
+        myProjects = data.data || [];
+        renderProjectList();
+
+        if (myProjects.length > 0) {
+            const target = myProjects.find((p) => p.id === activeProjectId) || myProjects[0];
+            activeProjectId = target.id;
+            await loadProjectDetail(activeProjectId);
+        } else {
+            document.getElementById('project-detail-panel').innerHTML = '<p style="color:#9ca3af; font-size:14px;">你还没有加入任何团队项目。</p>';
+        }
+    } catch (err) {
+        console.error('加载项目预览失败', err);
+    }
+}
+
+function openFullTeamCenter(projectId) {
+    if (projectId) {
+        window.location.href = `team_management.html?project=${projectId}`;
+        return;
+    }
+    if (activeProjectId) {
+        window.location.href = `team_management.html?project=${activeProjectId}`;
+        return;
+    }
+    window.location.href = 'team_management.html';
 }

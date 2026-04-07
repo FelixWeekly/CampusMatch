@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>团队管理中心</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body class="team-page-body">
+    <div class="team-shell">
+        <header class="team-topbar">
+            <div class="team-topbar-actions">
+                <button onclick="goBackDashboard()" class="back-btn-custom team-back-btn">← 返回大厅</button>
+            </div>
+            <div class="team-title-wrap">
+                <h1>团队管理与监督中心</h1>
+                <p>完整流程：项目状态、里程碑、打卡、监督事件、反馈闭环、结项互评</p>
+            </div>
+        </header>
+
+        <section class="team-layout">
+            <aside class="team-left-panel">
+                <h3>我的项目</h3>
+                <div id="team-project-list" class="team-scroll"></div>
+            </aside>
+
+            <main class="team-main-panel" id="team-main-panel">
+                <p class="team-empty">正在加载项目详情...</p>
+            </main>
+        </section>
+    </div>
+
+    <script src="team_management.js"></script>
+</body>
+</html>
