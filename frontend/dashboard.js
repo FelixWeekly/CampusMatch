@@ -469,68 +469,51 @@ window.addEventListener('DOMContentLoaded', () => {
 
     const rightEntry = document.getElementById('right-center-entry');
     if (rightEntry) {
-        rightEntry.style.setProperty('--entry-y', '0px');
-        rightEntry.style.setProperty('--entry-x', '0px');
-        rightEntry.style.setProperty('--entry-rot', '0deg');
-        rightEntry.style.setProperty('--entry-scale', '1');
+        rightEntry.style.setProperty('--entry-drift-y', '0px');
+        rightEntry.style.setProperty('--entry-trail-offset', '0px');
+        rightEntry.style.setProperty('--entry-trail-opacity', '0');
 
-        let velocity = 0;
-        let displacement = 0;
-        let target = 0;
-        let displayX = 0;
-        let displayRot = 0;
-        let leavingKick = false;
+        let driftY = 0;
+        let driftVelocity = 0;
+        let targetDriftY = 0;
+        let displayTrailOffset = 0;
+        let targetTrailOffset = 0;
+        let displayTrailOpacity = 0;
+        let targetTrailOpacity = 0;
+        let prevY = window.scrollY;
+        let prevTs = performance.now();
         let rafId = null;
 
         const clamp = (num, min, max) => Math.max(min, Math.min(max, num));
 
-        const mapWheelImpulse = (deltaY) => {
-            const sign = deltaY >= 0 ? 1 : -1;
-            const abs = Math.abs(deltaY);
-
-            if (abs <= 35) return deltaY * 0.014;
-            if (abs <= 120) {
-                return sign * (35 * 0.014 + (abs - 35) * 0.009);
-            }
-            return sign * (35 * 0.014 + 85 * 0.009 + (abs - 120) * 0.0048);
-        };
-
         const animateEntry = () => {
-            const spring = 0.102;
-            const damping = 0.848;
+            const driftForce = (targetDriftY - driftY) * 0.09;
+            driftVelocity = (driftVelocity + driftForce) * 0.76;
+            driftY += driftVelocity;
 
-            const force = (target - displacement) * spring;
-            velocity = (velocity + force) * damping;
-            displacement += velocity;
-            target *= 0.88;
+            displayTrailOffset += (targetTrailOffset - displayTrailOffset) * 0.22;
+            displayTrailOpacity += (targetTrailOpacity - displayTrailOpacity) * 0.18;
 
-            const targetX = clamp(velocity * -0.92, -6.2, 6.2);
-            const targetRot = clamp(velocity * -0.74, -6.9, 6.9);
+            targetDriftY *= 0.9;
+            targetTrailOffset *= 0.82;
+            targetTrailOpacity *= 0.84;
 
-            // x/rot 跟随 y 半拍，形成更自然的惯性层次
-            displayX += (targetX - displayX) * 0.18;
-            displayRot += (targetRot - displayRot) * 0.16;
+            rightEntry.style.setProperty('--entry-drift-y', `${driftY.toFixed(2)}px`);
+            rightEntry.style.setProperty('--entry-trail-offset', `${displayTrailOffset.toFixed(2)}px`);
+            rightEntry.style.setProperty('--entry-trail-opacity', `${displayTrailOpacity.toFixed(3)}`);
 
-            const scale = 1 + clamp(Math.abs(velocity) * 0.015, 0, 0.065);
-
-            rightEntry.style.setProperty('--entry-y', `${displacement.toFixed(2)}px`);
-            rightEntry.style.setProperty('--entry-x', `${displayX.toFixed(2)}px`);
-            rightEntry.style.setProperty('--entry-rot', `${displayRot.toFixed(2)}deg`);
-            rightEntry.style.setProperty('--entry-scale', scale.toFixed(3));
-
-            if (Math.abs(velocity) < 0.012 && Math.abs(displacement) < 0.04 && Math.abs(target) < 0.04) {
-                if (leavingKick) {
-                    leavingKick = false;
-                    target = -displacement * 0.35;
-                    rafId = requestAnimationFrame(animateEntry);
-                    return;
-                }
-                rightEntry.style.setProperty('--entry-y', '0px');
-                rightEntry.style.setProperty('--entry-x', '0px');
-                rightEntry.style.setProperty('--entry-rot', '0deg');
-                rightEntry.style.setProperty('--entry-scale', '1');
-                displayX = 0;
-                displayRot = 0;
+            if (
+                Math.abs(driftY) < 0.04 &&
+                Math.abs(driftVelocity) < 0.04 &&
+                Math.abs(targetDriftY) < 0.04 &&
+                Math.abs(displayTrailOffset) < 0.04 &&
+                Math.abs(targetTrailOffset) < 0.04 &&
+                displayTrailOpacity < 0.01 &&
+                targetTrailOpacity < 0.01
+            ) {
+                rightEntry.style.setProperty('--entry-drift-y', '0px');
+                rightEntry.style.setProperty('--entry-trail-offset', '0px');
+                rightEntry.style.setProperty('--entry-trail-opacity', '0');
                 rafId = null;
                 return;
             }
@@ -538,17 +521,30 @@ window.addEventListener('DOMContentLoaded', () => {
             rafId = requestAnimationFrame(animateEntry);
         };
 
-        window.addEventListener('wheel', (e) => {
-            const impulse = clamp(mapWheelImpulse(e.deltaY), -12.2, 12.2);
-            target += impulse;
-            target = clamp(target, -23, 23);
-            if (!rafId) rafId = requestAnimationFrame(animateEntry);
-        }, { passive: true });
+        const onScrollTail = () => {
+            const now = performance.now();
+            const dy = window.scrollY - prevY;
+            const dt = Math.max(1, now - prevTs);
+            const speed = Math.abs(dy) / dt;
 
-        rightEntry.addEventListener('mouseleave', () => {
-            leavingKick = true;
+            prevY = window.scrollY;
+            prevTs = now;
+
+            if (dy === 0) return;
+
+            const direction = dy > 0 ? 1 : -1;
+            const driftAmplitude = clamp(0.35 + speed * 4.8, 0.35, 1.8);
+            const trailAmplitude = clamp(4.8 + speed * 48, 4.8, 26);
+
+            // 按钮轻微惯性滑动 + 残影增强。
+            targetDriftY = clamp(direction * driftAmplitude, -1.8, 1.8);
+            targetTrailOffset = clamp(direction * trailAmplitude, -26, 26);
+            targetTrailOpacity = clamp(0.18 + speed * 0.9, 0.18, 0.68);
+
             if (!rafId) rafId = requestAnimationFrame(animateEntry);
-        });
+        };
+
+        window.addEventListener('scroll', onScrollTail, { passive: true });
     }
 
     updateQuickNavActive();

@@ -749,75 +749,97 @@ button:hover {
 
 .right-center-entry {
     position: fixed;
-    right: 16px;
+    right: 18px;
     top: 41%;
     transform: translateY(-50%);
     z-index: 58;
-    width: 84px;
-    padding: 10px 8px;
-    border-radius: 14px;
-    background: linear-gradient(180deg, rgba(255, 255, 255, 0.97) 0%, rgba(241, 245, 249, 0.96) 100%);
-    color: #334155;
-    border: 1px solid rgba(226, 232, 240, 0.8);
-    box-shadow: 0 6px 14px rgba(15, 23, 42, 0.08);
+    width: 92px;
+    padding: 11px 10px;
+    border-radius: 16px;
+    background:
+        linear-gradient(155deg, rgba(250, 253, 255, 0.97) 0%, rgba(236, 246, 255, 0.96) 52%, rgba(226, 238, 252, 0.95) 100%);
+    color: #1e3a5f;
+    border: 1px solid rgba(148, 183, 217, 0.42);
+    box-shadow:
+        0 6px 16px rgba(20, 64, 118, 0.09),
+        0 0 0 1px rgba(255, 255, 255, 0.42) inset,
+        inset 0 1px 0 rgba(255, 255, 255, 0.72);
     display: flex;
     flex-direction: column;
     align-items: center;
-    gap: 4px;
+    gap: 5px;
     cursor: pointer;
-    --entry-y: 0px;
-    --entry-x: 0px;
-    --entry-rot: 0deg;
-    --entry-scale: 1;
-    transform: translateY(calc(-50% + var(--entry-y))) translateX(var(--entry-x)) rotate(var(--entry-rot)) scale(var(--entry-scale));
-    transition: transform 0.34s cubic-bezier(0.2, 0.86, 0.32, 1), box-shadow 0.26s ease, background 0.26s ease, opacity 0.26s ease;
+    --entry-drift-y: 0px;
+    --entry-hover-lift: 0px;
+    --entry-trail-offset: 0px;
+    --entry-trail-opacity: 0;
+    transform: translateY(calc(-50% + var(--entry-drift-y) + var(--entry-hover-lift)));
     will-change: transform;
+    overflow: visible;
+    isolation: isolate;
+    transition: transform 0.35s ease, border-color 0.35s ease, box-shadow 0.35s ease, background 0.35s ease;
 }
 
 .right-center-entry:hover {
-    --entry-scale: 1.042;
-    --entry-x: -1px;
-    box-shadow: 0 12px 22px rgba(15, 23, 42, 0.12);
-    background: linear-gradient(180deg, #ffffff 0%, #edf5ff 100%);
+    --entry-hover-lift: -1px;
+    border-color: rgba(203, 213, 225, 0.92);
+    background:
+        linear-gradient(155deg, rgba(252, 254, 255, 0.98) 0%, rgba(243, 249, 255, 0.97) 52%, rgba(235, 244, 255, 0.96) 100%);
+    box-shadow:
+        0 1px 0 rgba(255, 255, 255, 0.82) inset,
+        0 8px 18px rgba(15, 23, 42, 0.06),
+        0 20px 36px rgba(15, 23, 42, 0.03);
 }
 
-.right-center-entry:active {
-    --entry-scale: 0.98;
+.right-center-entry::before,
+.right-center-entry::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    pointer-events: none;
+    background:
+        linear-gradient(155deg, rgba(248, 252, 255, 0.58) 0%, rgba(232, 244, 255, 0.56) 52%, rgba(223, 236, 255, 0.55) 100%);
+    border: 1px solid rgba(148, 183, 217, 0.45);
+    z-index: 1;
+}
+
+.right-center-entry::before {
+    transform: translateY(calc(var(--entry-trail-offset) * -0.45));
+    opacity: calc(var(--entry-trail-opacity) * 0.85);
+    filter: blur(1.4px);
+    box-shadow: 0 0 10px rgba(97, 165, 228, 0.2);
+}
+
+.right-center-entry::after {
+    transform: translateY(calc(var(--entry-trail-offset) * -0.9));
+    opacity: calc(var(--entry-trail-opacity) * 0.58);
+    filter: blur(3.2px);
+    box-shadow: 0 0 14px rgba(97, 165, 228, 0.16);
+}
+
+.right-center-entry > * {
+    position: relative;
+    z-index: 2;
 }
 
 .right-center-icon {
-    font-size: 16px;
-    color: #0ea5e9;
+    font-size: 17px;
+    color: #0b7dc7;
     line-height: 1;
-    transition: color 0.22s ease, transform 0.22s ease;
 }
 
 .right-center-title {
     font-size: 12px;
     font-weight: 700;
-    color: #1e293b;
+    color: #0f2846;
     white-space: nowrap;
-    transition: color 0.22s ease;
 }
 
 .right-center-desc {
     font-size: 10px;
-    color: #64748b;
+    color: #486582;
     white-space: nowrap;
-    transition: opacity 0.22s ease;
-}
-
-.right-center-entry:hover .right-center-icon {
-    color: #0284c7;
-    transform: translateY(-0.9px);
-}
-
-.right-center-entry:hover .right-center-title {
-    color: #0f172a;
-}
-
-.right-center-entry:hover .right-center-desc {
-    opacity: 0.88;
 }
 
 .team-page-body {
@@ -1127,7 +1149,9 @@ button:hover {
         width: 74px;
         top: auto;
         bottom: 20px;
-        transform: translateX(var(--entry-x)) rotate(var(--entry-rot)) scale(var(--entry-scale));
+        --entry-drift-y: 0px;
+        --entry-trail-offset: 0px;
+        transform: translateY(var(--entry-drift-y));
     }
 
     .team-layout,
