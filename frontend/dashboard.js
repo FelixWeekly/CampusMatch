@@ -16,6 +16,7 @@ window.onload = function() {
     // 3. 去后端抓取所有的帖子
     fetchPosts();
     loadMyProjects();
+    updateInboxBadge();
     
     // 4. 绑定补偿复选框事件
     const compensationCheckbox = document.getElementById('post-compensation');
@@ -691,6 +692,28 @@ async function openInbox() {
         }
     } catch (error) {
         messagesContainer.innerHTML = '<p style="color: red;">网络错误，无法加载消息！</p>';
+    } finally {
+        updateInboxBadge();
+    }
+}
+
+async function updateInboxBadge() {
+    const currentUser = localStorage.getItem('currentUser');
+    const badge = document.getElementById('inbox-badge');
+    if (!currentUser || !badge) return;
+
+    try {
+        const response = await fetch(`http://localhost:3000/api/my-messages?user=${encodeURIComponent(currentUser)}`);
+        const data = await response.json();
+        if (!data.success || !Array.isArray(data.data)) {
+            badge.style.display = 'none';
+            return;
+        }
+
+        const pendingCount = data.data.filter(msg => msg.status === 'pending').length;
+        badge.style.display = pendingCount > 0 ? 'block' : 'none';
+    } catch (err) {
+        badge.style.display = 'none';
     }
 }
 

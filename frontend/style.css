@@ -165,8 +165,23 @@ button:hover {
     margin: 0; /* 抹平旧样式 */
     font-weight: 600;
 }
-.btn-inbox { background-color: #3b82f6; color: white; }
+.btn-inbox {
+    background-color: #3b82f6;
+    color: white;
+    position: relative;
+}
 .btn-inbox:hover { background-color: #2563eb; transform: translateY(-1px); }
+.inbox-badge {
+    display: none;
+    position: absolute;
+    top: 10px;
+    right: 10px;
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background: #ef4444;
+    box-shadow: 0 0 0 2px rgba(255,255,255,0.9);
+}
 .btn-logout { background-color: #fef2f2; color: #ef4444; border: 1px solid #fecaca; }
 .btn-logout:hover { background-color: #fee2e2; }
 
@@ -1025,6 +1040,32 @@ button:hover {
     border-radius: 8px;
     font-size: 12px;
     transition: transform 0.2s ease, box-shadow 0.2s ease, filter 0.2s ease;
+}
+
+.team-leave-button {
+    width: 100%;
+    max-width: 320px;
+    margin: 0 auto;
+    display: block;
+    background: #dc2626;
+    color: #ffffff;
+    border: 1px solid #b91c1c;
+    border-radius: 14px;
+    padding: 14px 18px;
+    font-size: 15px;
+    font-weight: 700;
+    text-align: center;
+    cursor: pointer;
+}
+
+.team-leave-button:hover {
+    background: #b91c1c;
+}
+
+.team-leave-button:disabled {
+    background: #f87171;
+    border-color: #fca5a5;
+    cursor: not-allowed;
 }
 
 .team-actions-row button:hover,
