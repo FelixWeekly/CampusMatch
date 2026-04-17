@@ -336,7 +336,8 @@ app.get('/api/posts', (req, res) => {
             });
         }
         
-        // 🌟 为每个帖子计算已报名人数
+        // 🌟 为每个帖子计算已报名人数，并过滤掉已结束招募的“寻人组队”贴
+        const visiblePosts = [];
         posts.forEach(post => {
             const appCount = db.prepare("SELECT COUNT(*) as count FROM applications WHERE post_id = ?").get(post.id);
             post.applicant_count = appCount ? appCount.count : 0;
@@ -347,10 +348,15 @@ app.get('/api/posts', (req, res) => {
             if (post.type === '寻人组队') {
                 const project = ensureProjectForRecruitingPost(post);
                 post.project_status = project ? project.status : 'recruiting';
+                if (post.project_status !== 'recruiting') {
+                    return; // 不将非招募阶段项目展示给外部报名用户
+                }
             }
+
+            visiblePosts.push(post);
         });
         
-        res.json({ success: true, data: posts });
+        res.json({ success: true, data: visiblePosts });
     } catch (err) {
         res.status(500).json({ success: false, message: '获取帖子失败' });
     }
@@ -888,6 +894,32 @@ app.delete('/api/projects/:id/feedback/:fid', (req, res) => {
         res.json({ success: true, message: row.author === actor ? '反馈已撤回' : '反馈已删除' });
     } catch (err) {
         res.status(500).json({ success: false, message: '反馈删除失败' });
+    }
+});
+
+// 10.13 退出项目（成员可退出，队长不可直接退出）
+app.delete('/api/projects/:id/members', (req, res) => {
+    const projectId = req.params.id;
+    const { actor } = req.body;
+
+    if (!actor) return res.status(400).json({ success: false, message: '缺少 actor 参数' });
+
+    try {
+        const project = db.prepare('SELECT * FROM team_projects WHERE id = ?').get(projectId);
+        if (!project) return res.status(404).json({ success: false, message: '项目不存在' });
+        if (!isProjectMember(projectId, actor)) {
+            return res.status(403).json({ success: false, message: '你不是该项目成员' });
+        }
+        if (isProjectOwner(projectId, actor)) {
+            return res.status(403).json({ success: false, message: '队长不能直接退出项目' });
+        }
+
+        db.prepare('DELETE FROM team_members WHERE project_id = ? AND user_name = ?').run(projectId, actor);
+        logProjectEvent(projectId, actor, 'leave', '退出项目', `${actor} 已退出项目`, 'medium');
+
+        res.json({ success: true, message: '已成功退出项目' });
+    } catch (err) {
+        res.status(500).json({ success: false, message: '退出项目失败' });
     }
 });
 

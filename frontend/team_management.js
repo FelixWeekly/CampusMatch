@@ -128,6 +128,7 @@ function renderMainPanel() {
     const events = detail.events || [];
     const feedback = detail.feedback || [];
     const canManage = detail.can_manage;
+    const isOwner = project.owner === currentUser;
 
     const revieweeOptions = members
         .filter((m) => m.user_name !== currentUser)
@@ -292,6 +293,11 @@ function renderMainPanel() {
                 </div>
             ` : '<p class="muted">项目未结项，暂不能互评。</p>'}
         </section>
+        <section class="team-card" style="margin-top:18px;">
+            <button class="team-leave-button" onclick="leaveProject()" ${isOwner ? 'disabled' : ''}>
+                ${isOwner ? '队长无法退出项目' : '退出项目'}
+            </button>
+        </section>
     `;
 }
 
@@ -449,6 +455,25 @@ async function deleteFeedback(feedbackId) {
         await refreshAll();
     } catch (err) {
         alert('网络错误，操作失败');
+    }
+}
+
+async function leaveProject() {
+    if (!confirm('确定要退出该项目吗？退出后该项目将不再出现在“我的项目”列表中。')) return;
+
+    try {
+        const resp = await fetch(`http://localhost:3000/api/projects/${activeProjectId}/members`, {
+            method: 'DELETE',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ actor: currentUser })
+        });
+        const json = await resp.json();
+        if (!json.success) return alert(json.message || '退出失败');
+
+        alert('你已成功退出项目');
+        await refreshAll();
+    } catch (err) {
+        alert('网络错误，退出失败');
     }
 }
 
