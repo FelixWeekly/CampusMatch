@@ -24,15 +24,42 @@ async function fetchProfileData() {
             document.getElementById('display-name').innerText = u.name;
             document.getElementById('avatar-text').innerText = u.name.charAt(0); // 取名字首字母当头像
             document.getElementById('display-dept-grade').innerText = `${u.department} · ${u.grade}`;
+            document.getElementById('display-campus-hours').innerText = `校区: ${u.campus || '未设置'}`;
             document.getElementById('display-bio').innerText = u.bio;
 
-            // 渲染技能标签
-            const skillsContainer = document.getElementById('display-skills');
-            skillsContainer.innerHTML = '';
-            if (u.skills && u.skills !== '暂无技能标签') {
-                u.skills.split(/[,，]/).forEach(skill => {
-                    if (skill.trim()) skillsContainer.innerHTML += `<span class="skill-tag">${skill.trim()}</span>`;
+            // 渲染模型自动识别标签
+            const autoTagsEl = document.getElementById('display-auto-tags');
+            autoTagsEl.innerHTML = '';
+            const softTags = data.featureStore && data.featureStore.soft_tags ? data.featureStore.soft_tags : {};
+            const autoSkills = Array.isArray(softTags.skills) ? softTags.skills : [];
+            const autoInterests = Array.isArray(softTags.interests) ? softTags.interests : [];
+            const mergedTags = [...autoSkills, ...autoInterests];
+            if (mergedTags.length > 0) {
+                mergedTags.forEach((tag, idx) => {
+                    const style = idx < autoSkills.length
+                        ? 'background:#eff6ff; color:#2563eb;'
+                        : 'background:#ecfeff; color:#0e7490;';
+                    autoTagsEl.innerHTML += `<span class="skill-tag" style="${style}">${tag}</span>`;
                 });
+            } else {
+                autoTagsEl.innerHTML = '<span style="font-size:12px; color:#9ca3af;">系统将基于你的简介自动整理标签</span>';
+            }
+
+            const mbtiFromBio = softTags.mbti || '';
+            const bioMbtiEl = document.getElementById('display-bio-mbti');
+            if (mbtiFromBio) {
+                bioMbtiEl.style.display = 'block';
+                bioMbtiEl.innerText = `MBTI：${mbtiFromBio}`;
+            } else {
+                bioMbtiEl.style.display = 'none';
+                bioMbtiEl.innerText = '';
+            }
+
+            const featureUpdated = document.getElementById('display-feature-updated');
+            if (data.featureStore && data.featureStore.updated_at) {
+                featureUpdated.innerText = `特征画像更新时间：${data.featureStore.updated_at}`;
+            } else {
+                featureUpdated.innerText = '特征画像尚未生成';
             }
 
             // 渲染作品集链接
@@ -49,7 +76,7 @@ async function fetchProfileData() {
                 btnContainer.innerHTML = `<button onclick="openEditModal()" style="width: 100%; background: #111827; color: white; padding: 12px; border-radius: 8px; font-weight: bold;">✍️ 编辑个人资料</button>`;
                 document.getElementById('edit-dept').value = u.department === '未设置院系' ? '' : u.department;
                 document.getElementById('edit-grade').value = u.grade === '未设置年级' ? '' : u.grade;
-                document.getElementById('edit-skills').value = u.skills === '暂无技能标签' ? '' : u.skills;
+                document.getElementById('edit-campus').value = u.campus || '沙河校区';
                 document.getElementById('edit-bio').value = u.bio === '这个人很懒，还没写自我介绍~' ? '' : u.bio;
                 document.getElementById('edit-portfolio').value = u.portfolio;
             } else {
@@ -103,7 +130,7 @@ function openEditModal() { openModal('edit-modal'); }
 async function saveProfile() {
     const department = document.getElementById('edit-dept').value || '未设置院系';
     const grade = document.getElementById('edit-grade').value || '未设置年级';
-    const skills = document.getElementById('edit-skills').value || '暂无技能标签';
+    const campus = document.getElementById('edit-campus').value || '沙河校区';
     const portfolio = document.getElementById('edit-portfolio').value;
     const bio = document.getElementById('edit-bio').value || '这个人很懒，还没写自我介绍~';
 
@@ -111,7 +138,14 @@ async function saveProfile() {
         const res = await fetch('http://localhost:3000/api/profile', {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ name: currentUser, department, grade, skills, portfolio, bio })
+            body: JSON.stringify({
+                name: currentUser,
+                department,
+                grade,
+                campus,
+                portfolio,
+                bio
+            })
         });
         const data = await res.json();
         if (data.success) {

@@ -704,7 +704,8 @@ button:hover {
 .dashboard-page-body .dash-header,
 .dashboard-page-body .publish-card,
 .dashboard-page-body .post-card,
-.dashboard-page-body .team-center {
+.dashboard-page-body .team-center,
+.dashboard-page-body #recommendation-section {
     background: rgba(255, 255, 255, 0.96);
     border: 1px solid rgba(226, 232, 240, 0.98);
     box-shadow:
@@ -717,7 +718,8 @@ button:hover {
 .dashboard-page-body .post-card:hover,
 .dashboard-page-body .publish-card:hover,
 .dashboard-page-body .dash-header:hover,
-.dashboard-page-body .team-center:hover {
+.dashboard-page-body .team-center:hover,
+.dashboard-page-body #recommendation-section:hover {
     box-shadow:
         0 1px 0 rgba(255, 255, 255, 0.9) inset,
         0 8px 18px rgba(15, 23, 42, 0.03),
@@ -733,6 +735,20 @@ button:hover {
 .dashboard-page-body .publish-card,
 .dashboard-page-body .team-center {
     border-radius: 20px;
+}
+
+.dashboard-page-body #recommendation-section {
+    border-radius: 20px;
+}
+
+.dashboard-page-body .recommendation-card {
+    transition: box-shadow 0.3s ease, border-color 0.3s ease, transform 0.3s ease;
+}
+
+.dashboard-page-body .recommendation-card:hover {
+    transform: translateY(-3px);
+    box-shadow: 0 12px 24px rgba(0, 0, 0, 0.06);
+    border-color: #e2e8f0;
 }
 
 .dashboard-page-body .flow-guide-card {
@@ -751,7 +767,6 @@ button:hover {
     position: fixed;
     right: 18px;
     top: 41%;
-    transform: translateY(-50%);
     z-index: 58;
     width: 92px;
     padding: 11px 10px;
@@ -771,24 +786,51 @@ button:hover {
     cursor: pointer;
     --entry-drift-y: 0px;
     --entry-hover-lift: 0px;
+    --entry-hover-shift-x: 0px;
     --entry-trail-offset: 0px;
     --entry-trail-opacity: 0;
-    transform: translateY(calc(-50% + var(--entry-drift-y) + var(--entry-hover-lift)));
+    --entry-tilt-x: 0deg;
+    --entry-tilt-y: 0deg;
+    --entry-spot-x: 50%;
+    --entry-spot-y: 50%;
+    --entry-spot-alpha: 0;
+    --entry-scale: 1;
+    transform: translate3d(
+        var(--entry-hover-shift-x),
+        calc(-50% + var(--entry-drift-y) + var(--entry-hover-lift)),
+        0
+    ) perspective(760px) rotateX(var(--entry-tilt-x)) rotateY(var(--entry-tilt-y)) scale(var(--entry-scale));
     will-change: transform;
     overflow: visible;
     isolation: isolate;
-    transition: transform 0.35s ease, border-color 0.35s ease, box-shadow 0.35s ease, background 0.35s ease;
+    transition: transform 0.34s cubic-bezier(0.22, 1, 0.36, 1), border-color 0.28s ease, box-shadow 0.28s ease, background 0.28s ease, filter 0.3s ease;
+}
+
+.right-center-entry .right-center-icon,
+.right-center-entry .right-center-title {
+    transition: transform 0.28s cubic-bezier(0.22, 1, 0.36, 1), color 0.25s ease, letter-spacing 0.25s ease;
 }
 
 .right-center-entry:hover {
-    --entry-hover-lift: -1px;
+    --entry-hover-lift: -2px;
+    --entry-hover-shift-x: -3px;
+    --entry-spot-alpha: 0.95;
+    --entry-scale: 1.015;
     border-color: rgba(203, 213, 225, 0.92);
     background:
         linear-gradient(155deg, rgba(252, 254, 255, 0.98) 0%, rgba(243, 249, 255, 0.97) 52%, rgba(235, 244, 255, 0.96) 100%);
     box-shadow:
         0 1px 0 rgba(255, 255, 255, 0.82) inset,
-        0 8px 18px rgba(15, 23, 42, 0.06),
-        0 20px 36px rgba(15, 23, 42, 0.03);
+        0 12px 26px rgba(15, 23, 42, 0.1),
+        0 26px 44px rgba(15, 23, 42, 0.06);
+    filter: saturate(1.05);
+}
+
+.right-center-entry:active {
+    --entry-hover-lift: -1px;
+    --entry-hover-shift-x: -1px;
+    --entry-scale: 0.995;
+    transition-duration: 0.14s;
 }
 
 .right-center-entry::before,
@@ -808,14 +850,20 @@ button:hover {
     transform: translateY(calc(var(--entry-trail-offset) * -0.45));
     opacity: calc(var(--entry-trail-opacity) * 0.85);
     filter: blur(1.4px);
-    box-shadow: 0 0 10px rgba(97, 165, 228, 0.2);
+    box-shadow: 0 0 12px rgba(97, 165, 228, 0.26);
+    transition: opacity 0.22s ease, filter 0.22s ease;
 }
 
 .right-center-entry::after {
     transform: translateY(calc(var(--entry-trail-offset) * -0.9));
-    opacity: calc(var(--entry-trail-opacity) * 0.58);
-    filter: blur(3.2px);
-    box-shadow: 0 0 14px rgba(97, 165, 228, 0.16);
+    opacity: calc(var(--entry-trail-opacity) * 0.58 + 0.24 * var(--entry-spot-alpha));
+    filter: blur(2.2px);
+    border-color: rgba(144, 206, 255, 0.52);
+    background:
+        radial-gradient(circle at var(--entry-spot-x) var(--entry-spot-y), rgba(255, 255, 255, calc(0.36 * var(--entry-spot-alpha))) 0%, rgba(170, 216, 255, calc(0.24 * var(--entry-spot-alpha))) 22%, rgba(124, 183, 255, calc(0.14 * var(--entry-spot-alpha))) 38%, rgba(124, 183, 255, 0) 72%),
+        linear-gradient(135deg, rgba(255, 255, 255, 0.16), rgba(146, 197, 255, 0.08));
+    box-shadow: 0 0 18px rgba(97, 165, 228, 0.22);
+    transition: opacity 0.28s ease, filter 0.28s ease, background 0.18s ease;
 }
 
 .right-center-entry > * {
@@ -840,6 +888,44 @@ button:hover {
     font-size: 10px;
     color: #486582;
     white-space: nowrap;
+}
+
+.right-center-entry:hover .right-center-title {
+    letter-spacing: 0.34px;
+    color: #0d375f;
+    transform: translateY(-0.5px);
+}
+
+.right-center-entry:hover .right-center-icon {
+    transform: translateY(-0.8px) scale(1.03);
+}
+
+#right-community-entry {
+    top: 44%;
+}
+
+#right-center-entry {
+    top: 58%;
+}
+
+.team-center,
+.project-mini-card,
+.quick-progress-indicator,
+#posts-section-body,
+.flow-guide-card,
+.dashboard-page-body .post-card,
+.dashboard-page-body .team-center,
+.dashboard-page-body .recommendation-card {
+    transition: none !important;
+    animation: none !important;
+}
+
+.dashboard-page-body .post-card:hover,
+.dashboard-page-body .team-center:hover,
+.flow-guide-card:hover,
+.project-mini-card:hover,
+.project-mini-card:hover {
+    transform: none !important;
 }
 
 .team-page-body {

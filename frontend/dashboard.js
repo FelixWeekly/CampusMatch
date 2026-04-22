@@ -1,23 +1,20 @@
-// 一打开这个页面，就会自动执行初始化函数
 window.onload = function() {
-    // 1. 检查有没有人登录？(从 localStorage 里取名字)
     const currentUser = localStorage.getItem('currentUser');
-    
-    // 如果没名字，说明没登录，直接一脚踢回登录页！
+
     if (!currentUser) {
         alert('请先登录！');
         window.location.href = 'index.html';
         return;
     }
 
-    // 2. 把名字显示在标题上
     document.getElementById('welcome-text').innerText = `👋 欢迎, ${currentUser}!`;
+    updateManagementEntryVisibility(false);
+    renderSimpleHomeFlow(0);
 
-    // 3. 去后端抓取所有的帖子
     fetchPosts();
+    loadRecommendations();
     loadMyProjects();
     
-    // 4. 绑定补偿复选框事件
     const compensationCheckbox = document.getElementById('post-compensation');
     const amountInput = document.getElementById('post-amount');
     
@@ -31,25 +28,24 @@ window.onload = function() {
     }
 };
 
-// 退出登录
 function logout() {
-    localStorage.removeItem('currentUser'); // 清除记忆
-    window.location.href = 'index.html';    // 跳回登录页
+    localStorage.removeItem('currentUser');
+    window.location.href = 'index.html';
 }
 
-// 发布帖子功能
 async function createPost() {
     const title = document.getElementById('post-title').value;
     const content = document.getElementById('post-content').value;
     const type = document.getElementById('post-type').value;
-    const author = localStorage.getItem('currentUser'); // 谁发的帖？
+    const acceptCrossCampus = document.getElementById('post-cross-campus').checked;
+    const requiresManagement = document.getElementById('post-requires-management')?.checked || false;
+    const author = localStorage.getItem('currentUser');
     
     if (title === '' || content === '') {
         alert('标题和内容不能为空！');
         return;
     }
-    
-    // 根据类型确定报酬
+
     let hasCompensation = false;
     let amount = '';
     
@@ -62,9 +58,6 @@ async function createPost() {
             return;
         }
     }
-    // 如果是"提供技能"，compensation 保持为空字符串
-
-    // 打包数据发送给后端
     try {
         const response = await fetch('http://localhost:3000/api/posts', {
             method: 'POST',
@@ -75,23 +68,28 @@ async function createPost() {
                 content, 
                 type, 
                 location: '', 
-                compensation: (type === '寻人组队' && hasCompensation) ? amount : ''
+                compensation: (type === '寻人组队' && hasCompensation) ? amount : '',
+                accept_cross_campus: acceptCrossCampus,
+                requires_management: (type === '寻人组队') ? requiresManagement : false
             })
         });
         const data = await response.json();
 
         if (data.success) {
             alert('发布成功！');
-            // 清空输入框
             document.getElementById('post-title').value = '';
             document.getElementById('post-content').value = '';
             document.getElementById('post-compensation').checked = false;
             document.getElementById('post-amount').value = '';
             document.getElementById('post-amount').style.display = 'none';
             document.getElementById('post-type').value = '寻人组队'; // 重置为默认类型
-            updatePlaceholders(); // 更新提示词
-            // 重新刷新帖子列表
+            document.getElementById('post-cross-campus').checked = false;
+            if (document.getElementById('post-requires-management')) {
+                document.getElementById('post-requires-management').checked = false;
+            }
+            updatePlaceholders();
             fetchPosts();
+            loadRecommendations();
         }
     } catch (error) {
         alert('网络错误，发布失败！');
@@ -248,12 +246,7 @@ async function fetchPosts() {
 
         if (data.success) {
             allPosts = data.data || [];
-            
-            // 为每个帖子更新热度（每次浏览都计数）
-            allPosts.forEach(post => {
-                fetch(`http://localhost:3000/api/posts/${post.id}/view`, { method: 'PUT' }).catch(e => {});
-            });
-            
+
             // 渲染当前（可能带过滤）的帖子
             renderPosts();
         }
@@ -329,6 +322,12 @@ function renderPosts() {
             compensationTag = `<span class="post-tag" style="background: #fecaca; color: #991b1b; margin-left: 8px;">💰 ${post.compensation}</span>`;
         }
 
+        const postCampus = post.campus || '';
+        const modeTag = Number(post.accept_cross_campus || 0) === 1
+            ? `<span class="post-tag" style="background: #dcfce7; color: #166534;">🌍 可跨校区</span>`
+            : (postCampus
+                ? `<span class="post-tag" style="background: #f1f5f9; color: #334155;">📍 同校区优先 · ${postCampus}</span>`
+                : '');
         // 构建热度标签（简化版本，仅显示基础信息）
         let popularityBadge = '';
         if (post.popularity && post.popularity > 0) {
@@ -367,6 +366,7 @@ function renderPosts() {
                         <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 12px;">
                             <span class="post-tag" style="background: #dbeafe; color: #1e40af; padding: 6px 12px; border-radius: 4px; font-size: 13px; font-weight: bold;">${post.type || ''}</span>
                             ${compensationTag}
+                            ${modeTag}
                         </div>
                         <h3 style="font-size: 18px; font-weight: 700; color: #1f2937; margin-bottom: 12px; line-height: 1.4;">${post.title}</h3>
                     </div>
@@ -467,11 +467,42 @@ window.addEventListener('DOMContentLoaded', () => {
         });
     });
 
-    const rightEntry = document.getElementById('right-center-entry');
-    if (rightEntry) {
-        rightEntry.style.setProperty('--entry-drift-y', '0px');
-        rightEntry.style.setProperty('--entry-trail-offset', '0px');
-        rightEntry.style.setProperty('--entry-trail-opacity', '0');
+    const rightEntries = Array.from(document.querySelectorAll('.right-center-entry'));
+    if (rightEntries.length) {
+        rightEntries.forEach((entry) => {
+            entry.style.setProperty('--entry-drift-y', '0px');
+            entry.style.setProperty('--entry-trail-offset', '0px');
+            entry.style.setProperty('--entry-trail-opacity', '0');
+            entry.style.setProperty('--entry-tilt-x', '0deg');
+            entry.style.setProperty('--entry-tilt-y', '0deg');
+            entry.style.setProperty('--entry-spot-x', '50%');
+            entry.style.setProperty('--entry-spot-y', '50%');
+            entry.style.setProperty('--entry-spot-alpha', '0');
+
+            entry.addEventListener('pointermove', (e) => {
+                const rect = entry.getBoundingClientRect();
+                if (!rect.width || !rect.height) return;
+
+                const px = (e.clientX - rect.left) / rect.width;
+                const py = (e.clientY - rect.top) / rect.height;
+                const tiltY = (px - 0.5) * 7.2;
+                const tiltX = (0.5 - py) * 7.2;
+
+                entry.style.setProperty('--entry-tilt-x', `${tiltX.toFixed(2)}deg`);
+                entry.style.setProperty('--entry-tilt-y', `${tiltY.toFixed(2)}deg`);
+                entry.style.setProperty('--entry-spot-x', `${(px * 100).toFixed(2)}%`);
+                entry.style.setProperty('--entry-spot-y', `${(py * 100).toFixed(2)}%`);
+                entry.style.setProperty('--entry-spot-alpha', '1');
+            });
+
+            entry.addEventListener('pointerleave', () => {
+                entry.style.setProperty('--entry-tilt-x', '0deg');
+                entry.style.setProperty('--entry-tilt-y', '0deg');
+                entry.style.setProperty('--entry-spot-x', '50%');
+                entry.style.setProperty('--entry-spot-y', '50%');
+                entry.style.setProperty('--entry-spot-alpha', '0');
+            });
+        });
 
         let driftY = 0;
         let driftVelocity = 0;
@@ -486,6 +517,10 @@ window.addEventListener('DOMContentLoaded', () => {
 
         const clamp = (num, min, max) => Math.max(min, Math.min(max, num));
 
+        const applyToEntries = (prop, value) => {
+            rightEntries.forEach((entry) => entry.style.setProperty(prop, value));
+        };
+
         const animateEntry = () => {
             const driftForce = (targetDriftY - driftY) * 0.09;
             driftVelocity = (driftVelocity + driftForce) * 0.76;
@@ -498,9 +533,9 @@ window.addEventListener('DOMContentLoaded', () => {
             targetTrailOffset *= 0.82;
             targetTrailOpacity *= 0.84;
 
-            rightEntry.style.setProperty('--entry-drift-y', `${driftY.toFixed(2)}px`);
-            rightEntry.style.setProperty('--entry-trail-offset', `${displayTrailOffset.toFixed(2)}px`);
-            rightEntry.style.setProperty('--entry-trail-opacity', `${displayTrailOpacity.toFixed(3)}`);
+            applyToEntries('--entry-drift-y', `${driftY.toFixed(2)}px`);
+            applyToEntries('--entry-trail-offset', `${displayTrailOffset.toFixed(2)}px`);
+            applyToEntries('--entry-trail-opacity', `${displayTrailOpacity.toFixed(3)}`);
 
             if (
                 Math.abs(driftY) < 0.04 &&
@@ -511,9 +546,9 @@ window.addEventListener('DOMContentLoaded', () => {
                 displayTrailOpacity < 0.01 &&
                 targetTrailOpacity < 0.01
             ) {
-                rightEntry.style.setProperty('--entry-drift-y', '0px');
-                rightEntry.style.setProperty('--entry-trail-offset', '0px');
-                rightEntry.style.setProperty('--entry-trail-opacity', '0');
+                applyToEntries('--entry-drift-y', '0px');
+                applyToEntries('--entry-trail-offset', '0px');
+                applyToEntries('--entry-trail-opacity', '0');
                 rafId = null;
                 return;
             }
@@ -536,7 +571,6 @@ window.addEventListener('DOMContentLoaded', () => {
             const driftAmplitude = clamp(0.35 + speed * 4.8, 0.35, 1.8);
             const trailAmplitude = clamp(4.8 + speed * 48, 4.8, 26);
 
-            // 按钮轻微惯性滑动 + 残影增强。
             targetDriftY = clamp(direction * driftAmplitude, -1.8, 1.8);
             targetTrailOffset = clamp(direction * trailAmplitude, -26, 26);
             targetTrailOpacity = clamp(0.18 + speed * 0.9, 0.18, 0.68);
@@ -807,31 +841,33 @@ function handleChatInputKeyDown(e) {
     }
 }
 
-// 🌟 【新增：切换下拉菜单时，动态改变提示词】
 function updatePlaceholders() {
     const type = document.getElementById('post-type').value;
     const titleInput = document.getElementById('post-title');
     const contentInput = document.getElementById('post-content');
     const compensationSection = document.getElementById('compensation-section');
+    const managementSection = document.getElementById('management-section');
 
     if (type === '寻人组队') {
         titleInput.placeholder = "一句话概括你的需求 (如：急寻一名会弹吉他的同学迎新晚会伴奏)";
         contentInput.placeholder = "详细描述一下任务时间、地点、要求或可能愿意提供的报酬...";
-        compensationSection.style.display = 'flex'; // 显示报酬部分
+        compensationSection.style.display = 'flex';
+        if (managementSection) managementSection.style.display = 'block';
     } else if (type === '提供技能') {
         titleInput.placeholder = "一句话概括你能做什么 (如：精通什么编程语言/海报设计/视频剪辑)";
         contentInput.placeholder = "详细描述一下你的技能水平、空闲时间以及可能会存在的期望报酬...";
-        compensationSection.style.display = 'none'; // 隐藏报酬部分
-        // 清空报酬数据
+        compensationSection.style.display = 'none';
+        if (managementSection) managementSection.style.display = 'none';
         document.getElementById('post-compensation').checked = false;
         document.getElementById('post-amount').value = '';
         document.getElementById('post-amount').style.display = 'none';
+        if (document.getElementById('post-requires-management')) {
+            document.getElementById('post-requires-management').checked = false;
+        }
     }
 }
 
-// 🌟 【新增：删帖功能】
 async function deletePost(postId) {
-    // 弹窗确认，防止误触
     if (!confirm('确定要删除这个帖子吗？删除后不可恢复哦！')) {
         return; 
     }
@@ -839,18 +875,17 @@ async function deletePost(postId) {
     const currentUser = localStorage.getItem('currentUser');
 
     try {
-        // 向后端发送 DELETE 请求
         const response = await fetch(`http://localhost:3000/api/posts/${postId}`, {
             method: 'DELETE',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ author: currentUser }) // 告诉后端我是谁，防止别人删我的帖
+            body: JSON.stringify({ author: currentUser })
         });
 
         const data = await response.json();
 
         if (data.success) {
             alert('🗑️ 删除成功！');
-            fetchPosts(); // 重新拉取最新的帖子列表
+            fetchPosts();
         } else {
             alert('删除失败：' + data.message);
         }
@@ -883,7 +918,6 @@ async function decideApplication(applicationId, decision) {
 
 let myProjects = [];
 let activeProjectId = null;
-
 function statusLabel(status) {
     if (status === 'recruiting') return '招募中';
     if (status === 'executing') return '执行中';
@@ -911,7 +945,7 @@ function renderProjectList() {
         el.innerHTML = `
             <div style="font-weight:700; color:#1f2937; margin-bottom:6px;">${project.title}</div>
             <div style="font-size:12px; color:#6b7280; margin-bottom:4px;">状态：${statusLabel(project.status)}</div>
-            <div style="font-size:12px; color:#6b7280;">成员 ${project.member_count} | 待办里程碑 ${project.pending_milestones}</div>
+            <div style="font-size:12px; color:#6b7280;">成员 ${project.member_count} | 最近有打卡 ${project.recent_checkin ? '是' : '否'}</div>
         `;
         el.onclick = async function() {
             activeProjectId = project.id;
@@ -922,19 +956,28 @@ function renderProjectList() {
     });
 }
 
-function renderLifecycle(status) {
-    const steps = [
-        { key: 'initiated', text: '发起' },
-        { key: 'recruiting', text: '招募' },
-        { key: 'executing', text: '执行' },
-        { key: 'completed', text: '结项' }
-    ];
-    const activeIndex = steps.findIndex((s) => s.key === status);
+function updateManagementEntryVisibility(hasManagedProject) {
+    const teamGrid = document.getElementById('team-management-grid');
+    const rightEntry = document.getElementById('right-center-entry');
+    if (teamGrid) teamGrid.style.display = hasManagedProject ? 'grid' : 'none';
+    if (rightEntry) rightEntry.style.display = hasManagedProject ? 'flex' : 'none';
+}
 
-    return `<div class="lifecycle-track">${steps.map((step, index) => {
-        const active = index <= activeIndex ? ' active' : '';
-        return `<span class="life-step${active}">${step.text}</span>`;
-    }).join('')}</div>`;
+function renderSimpleHomeFlow(projectsCount) {
+    const panel = document.getElementById('simple-flow-panel');
+    if (!panel) return;
+    panel.innerHTML = `
+        <div style="display:flex; justify-content:space-between; align-items:center; gap:10px; flex-wrap:wrap; margin-bottom:8px;">
+            <strong style="font-size:16px; color:#111827;">主页简易流程</strong>
+            <span style="font-size:12px; color:#64748b;">重协作项目 ${projectsCount}</span>
+        </div>
+        <div style="display:flex; gap:8px; flex-wrap:wrap; margin-bottom:10px;">
+            <span style="font-size:12px; background:#ecfeff; color:#155e75; padding:4px 8px; border-radius:999px;">发布需求</span>
+            <span style="font-size:12px; background:#eff6ff; color:#1d4ed8; padding:4px 8px; border-radius:999px;">人员组成</span>
+            <span style="font-size:12px; background:#f0fdf4; color:#166534; padding:4px 8px; border-radius:999px;">日常打卡防放鸽子</span>
+        </div>
+        <div style="font-size:13px; color:#475569; line-height:1.6;">轻量任务不需要复杂治理；只有你参与了开启团队管理的项目，才会展示下方项目管理界面。</div>
+    `;
 }
 
 async function loadProjectDetail(projectId) {
@@ -945,7 +988,7 @@ async function loadProjectDetail(projectId) {
     panel.innerHTML = '<p style="color:#9ca3af;">正在加载项目详情...</p>';
 
     try {
-        const response = await fetch(`http://localhost:3000/api/projects/${projectId}/overview?user=${encodeURIComponent(currentUser)}`);
+        const response = await fetch(`http://localhost:3000/api/projects/${projectId}/detail?user=${encodeURIComponent(currentUser)}`);
         const data = await response.json();
         if (!data.success) {
             panel.innerHTML = `<p style="color:#ef4444;">${data.message || '加载失败'}</p>`;
@@ -954,9 +997,8 @@ async function loadProjectDetail(projectId) {
 
         const detail = data.data;
         const project = detail.project;
-        const checkins = detail.recent_checkins || [];
-        const events = detail.recent_events || [];
-        const canManage = detail.can_manage;
+        const members = detail.members || [];
+        const checkins = (detail.checkins || []).slice(0, 16);
 
         panel.innerHTML = `
             <div style="display:flex; justify-content:space-between; align-items:center; gap:12px; flex-wrap:wrap;">
@@ -964,22 +1006,10 @@ async function loadProjectDetail(projectId) {
                 <span style="font-size:12px; color:#374151; background:#e5e7eb; border-radius:999px; padding:6px 10px;">${statusLabel(project.status)}</span>
             </div>
 
-            ${renderLifecycle(project.status)}
-
-            <div style="display:flex; gap:8px; flex-wrap:wrap; margin-bottom:12px;">
-                ${canManage ? `
-                    <button onclick="changeProjectStatus(${project.id}, 'recruiting')" style="width:auto; padding:6px 10px; font-size:12px; background:#e5e7eb; color:#111827;">设为招募</button>
-                    <button onclick="changeProjectStatus(${project.id}, 'executing')" style="width:auto; padding:6px 10px; font-size:12px; background:#2563eb; color:#fff;">进入执行</button>
-                    <button onclick="changeProjectStatus(${project.id}, 'completed')" style="width:auto; padding:6px 10px; font-size:12px; background:#111827; color:#fff;">结项</button>
-                ` : '<span style="font-size:12px; color:#6b7280;">仅队长可切换项目阶段</span>'}
-            </div>
-
-            <div style="margin-bottom:14px;">
-                <strong style="display:block; margin-bottom:6px;">流程概览</strong>
-                <div style="display:flex; gap:8px; flex-wrap:wrap;">
-                    <span style="font-size:12px; background:#eef2ff; color:#1e3a8a; padding:4px 8px; border-radius:999px;">成员 ${detail.member_count}</span>
-                    <span style="font-size:12px; background:#ecfeff; color:#155e75; padding:4px 8px; border-radius:999px;">里程碑 ${detail.milestone_completed}/${detail.milestone_total}</span>
-                    <span style="font-size:12px; background:#fef9c3; color:#854d0e; padding:4px 8px; border-radius:999px;">待处理反馈 ${detail.open_feedback}</span>
+            <div style="margin:10px 0 14px 0;">
+                <strong style="display:block; margin-bottom:6px;">人员组成</strong>
+                <div style="display:flex; gap:6px; flex-wrap:wrap;">
+                    ${members.length ? members.map((m) => `<span style="font-size:12px; background:${m.role === 'leader' ? '#dbeafe' : '#f1f5f9'}; color:#334155; padding:4px 8px; border-radius:999px;">${m.user_name}${m.role === 'leader' ? '（队长）' : ''}</span>`).join('') : '<span style="font-size:12px; color:#9ca3af;">暂无成员信息</span>'}
                 </div>
             </div>
 
@@ -991,17 +1021,10 @@ async function loadProjectDetail(projectId) {
                     <button onclick="submitCheckin(${project.id})" style="width:auto; padding:8px 12px; font-size:12px;">提交打卡</button>
                 </div>
                 <div style="max-height:160px; overflow:auto; background:#fff; border:1px solid #e5e7eb; border-radius:8px; padding:8px;">
-                    ${checkins.length ? checkins.map((c) => `<div style="display:flex; justify-content:space-between; gap:10px; align-items:flex-start; font-size:12px; color:#374151; padding:6px 0; border-bottom:1px dashed #e5e7eb;"><div><strong>${c.user_name}</strong> (${c.task_completion}%)：${c.progress_note || '无'} <span style="color:#9ca3af;">${c.created_at}</span></div>${canManage ? `<button onclick="deleteProjectCheckin(${project.id}, ${c.id})" style="width:auto; padding:4px 8px; font-size:11px; background:#fef2f2; color:#b91c1c; border:1px solid #fecaca; border-radius:6px;">删除</button>` : ''}</div>`).join('') : '<span style="font-size:12px; color:#9ca3af;">暂无打卡记录</span>'}
+                    ${checkins.length ? checkins.map((c) => `<div style="display:flex; justify-content:space-between; gap:10px; align-items:flex-start; font-size:12px; color:#374151; padding:6px 0; border-bottom:1px dashed #e5e7eb;"><div><strong>${c.user_name}</strong> (${c.task_completion}%)：${c.progress_note || '无'} <span style="color:#9ca3af;">${c.created_at}</span></div></div>`).join('') : '<span style="font-size:12px; color:#9ca3af;">暂无打卡记录</span>'}
                 </div>
             </div>
-
-            <div>
-                <strong style="display:block; margin-bottom:6px;">最近监督事件</strong>
-                <div style="max-height:140px; overflow:auto; background:#fff; border:1px solid #e5e7eb; border-radius:8px; padding:8px; margin-bottom:10px;">
-                    ${events.length ? events.map((e) => `<div style="font-size:12px; color:#334155; padding:6px 0; border-bottom:1px dashed #e5e7eb;"><strong>[${e.severity || 'medium'}]</strong> ${e.title} · ${e.actor || '系统'} <span style="color:#94a3b8;">${e.created_at}</span></div>`).join('') : '<span style="font-size:12px; color:#9ca3af;">暂无监督事件</span>'}
-                </div>
-                <button onclick="openFullTeamCenter(${project.id})" style="width:auto; padding:8px 12px; font-size:12px; background:#0f172a; color:#fff;">进入完整团队管理与监督反馈</button>
-            </div>
+            <button onclick="openFullTeamCenter(${project.id})" style="width:auto; padding:8px 12px; font-size:12px; background:#0f172a; color:#fff;">进入项目管理</button>
         `;
     } catch (err) {
         panel.innerHTML = '<p style="color:#ef4444;">网络错误，加载失败</p>';
@@ -1072,6 +1095,8 @@ async function loadProjectPreviews() {
         const data = await response.json();
         if (!data.success) return;
         myProjects = data.data || [];
+        updateManagementEntryVisibility(myProjects.length > 0);
+        renderSimpleHomeFlow(myProjects.length);
         renderProjectList();
 
         if (myProjects.length > 0) {
@@ -1079,7 +1104,7 @@ async function loadProjectPreviews() {
             activeProjectId = target.id;
             await loadProjectDetail(activeProjectId);
         } else {
-            document.getElementById('project-detail-panel').innerHTML = '<p style="color:#9ca3af; font-size:14px;">你还没有加入任何团队项目。</p>';
+            document.getElementById('project-detail-panel').innerHTML = '<p style="color:#9ca3af; font-size:14px;">你还没有参与开启团队管理的项目。</p>';
         }
     } catch (err) {
         console.error('加载项目预览失败', err);
@@ -1095,5 +1120,63 @@ function openFullTeamCenter(projectId) {
         window.location.href = `team_management.html?project=${activeProjectId}`;
         return;
     }
-    window.location.href = 'team_management.html';
+    alert('当前没有开启团队管理的重协作项目，先发布并开启团队管理后再进入。');
 }
+
+async function loadRecommendations() {
+    const currentUser = localStorage.getItem('currentUser');
+    const container = document.getElementById('recommendation-container');
+    if (!currentUser || !container) return;
+
+    container.innerHTML = '<p style="text-align:center; color:#9ca3af; padding:16px;">正在计算推荐...</p>';
+
+    try {
+        let resp = await fetch(`http://localhost:3000/api/recommendations-ai?user=${encodeURIComponent(currentUser)}&limit=6`);
+        let data = await resp.json();
+
+        if (!data.success) {
+            resp = await fetch(`http://localhost:3000/api/recommendations?user=${encodeURIComponent(currentUser)}&limit=6`);
+            data = await resp.json();
+        }
+        if (!data.success) {
+            container.innerHTML = `<p style="color:#ef4444; text-align:center;">${data.message || '推荐加载失败'}</p>`;
+            return;
+        }
+
+        const items = data.data || [];
+        if (!items.length) {
+            container.innerHTML = '<p style="color:#6b7280; text-align:center; padding:12px;">当前没有符合召回条件的推荐，先完善个人画像或发布更多帖子试试。</p>';
+            return;
+        }
+
+        container.innerHTML = `
+            <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(220px, 1fr)); gap:10px;">
+                ${items.map((item) => {
+                    const reasons = (item.recommendation_reasons || []).map((r) => `<div style="font-size:12px; color:#334155;">• ${r}</div>`).join('');
+                    const postCampus = item.campus || '';
+                    const modeText = Number(item.accept_cross_campus || 0) === 1
+                        ? (postCampus ? `可跨校区 · 发布校区 ${postCampus}` : '可跨校区')
+                        : (postCampus ? `同校区优先 · ${postCampus}` : '');
+
+                    return `
+                        <div class="post-card recommendation-card" style="padding: 18px;">
+                            <div style="display:flex; justify-content:space-between; gap:8px; align-items:flex-start; margin-bottom:8px;">
+                                <strong style="color:#1f2937; line-height:1.45; font-size:16px;">${item.title}</strong>
+                            </div>
+                            <div style="font-size:14px; color:#6b7280; margin-bottom:10px;">${modeText ? `${modeText} · ` : ''}${item.type || ''}</div>
+                            <div style="max-height:86px; overflow:hidden; margin-bottom:10px; font-size:15px; color:#374151; line-height:1.55;">${item.content || ''}</div>
+                            <div style="display:flex; flex-direction:column; gap:4px; margin-bottom:12px;">${reasons}</div>
+                            <div style="display:flex; justify-content:space-between; align-items:center; gap:8px;">
+                                <a href="profile.html?user=${item.author}" style="font-size:13px; color:#2563eb; text-decoration:none;">发布者：${item.author}</a>
+                                <button onclick="applyForPost(${item.id})" style="width:auto; padding:7px 12px; font-size:13px; background:#2563eb; color:#fff; border:none; border-radius:7px;">我感兴趣</button>
+                            </div>
+                        </div>
+                    `;
+                }).join('')}
+            </div>
+        `;
+    } catch (err) {
+        container.innerHTML = '<p style="color:#ef4444; text-align:center;">网络错误，推荐加载失败</p>';
+    }
+}
+
