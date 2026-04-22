@@ -57,5 +57,88 @@ node server.js # 启动服务器 (运行在 http://localhost:3000)
 1. **防 SQL 注入**：后端所有数据库交互均采用 `prepare statement` (预编译语句) 传参。
 2. **关系型数据库设计**：建立 `users`、`posts`、`applications` 三张核心表，清晰映射“一对多”的实体关系。
 
+## 智能推荐 MVP（已接入）
+
+### 数据建模（先结构化，再推荐）
+- 用户画像 Feature Store：
+  - Hard Tags：年级、院系、校区
+  - Soft Tags：技能、兴趣、MBTI（从自我介绍可选识别）、历史成功率
+  - Vector：由用户文本简介与标签生成的语义向量
+- 帖子特征：
+  - 发布校区：由发布者个人资料自动继承
+  - 跨校区开关：`accept_cross_campus`
+  - 结构化标签 + 向量
+
+### 推荐流程（两阶段）
+1. Recall 召回剪枝：
+  - 默认同校区过滤
+  - 若帖子开启跨校区协作则放行
+2. Ranking 排序打分：
+   - 技能匹配 + 兴趣匹配 + MBTI 兼容 + 语义相似度 + 历史成功率
+
+### 权重配置（可调）
+当前默认权重：
+```json
+{
+  "skill": 0.3,
+  "interest": 0.2,
+  "mbti": 0.1,
+  "semantic": 0.3,
+  "success": 0.1
+}
+```
+
+### 关键 API
+
+- `GET /api/recommendations?user=<用户名>&limit=6`
+  - 返回推荐列表、召回数量、候选总量、当前权重
+
+- `GET /api/recommendation-config`
+  - 返回校区枚举、协作模式枚举、推荐权重
+
+- `PUT /api/profile`
+  - 支持字段：`campus`、`bio`（可选在 bio 中写 MBTI）
+
+- `POST /api/posts`
+  - 支持字段：`accept_cross_campus`
+
+- `POST /api/location/off-campus/resolve`
+  - 校外地址定位占位接口（当前返回 501）
+  - 便于后续接入外部地图 API，不影响现有校区内匹配链路
+
+### 快速联调示例
+
+更新个人画像：
+```bash
+curl -X PUT http://localhost:3000/api/profile \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "张三",
+    "department": "计算机学院",
+    "grade": "2024级本科",
+    "campus": "沙河校区",
+    "bio": "我擅长后端与数据处理，偏好竞赛，MBTI 是 INTJ",
+    "portfolio": ""
+  }'
+```
+
+发布线下帖子：
+```bash
+curl -X POST http://localhost:3000/api/posts \
+  -H "Content-Type: application/json" \
+  -d '{
+    "author": "李四",
+    "title": "招募算法同学打比赛",
+    "content": "希望熟悉 Python 和机器学习，周末线下讨论更方便",
+    "type": "寻人组队",
+    "accept_cross_campus": false
+  }'
+```
+
+获取推荐：
+```bash
+curl "http://localhost:3000/api/recommendations?user=张三&limit=6"
+```
+
 ---
 *Developed with ❤️ by Felix | 期待您的使用与反馈*

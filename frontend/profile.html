@@ -91,20 +91,20 @@
     <!-- 独立的标题 -->
     <h1 class="profile-title">🎓 个人主页</h1>
 
-    <!-- 主体卡片区 -->
     <div class="profile-container">
-        <!-- 左侧信息 -->
         <div class="info-card">
             <div class="avatar" id="avatar-text">👤</div>
             <h2 class="user-name" id="display-name">加载中...</h2>
             <p class="user-tags" id="display-dept-grade">院系年级加载中...</p>
-            <div class="skills-container" id="display-skills"></div>
+            <p class="user-tags" id="display-campus-hours">校区加载中...</p>
+            <div class="skills-container" id="display-auto-tags"></div>
             <a id="display-portfolio" class="portfolio-link" href="#" target="_blank" style="display: none;">🔗 查看我的作品集/主页</a>
             <div class="user-bio" id="display-bio">加载中...</div>
+            <p class="user-tags" id="display-bio-mbti" style="margin-top:6px; display:none;"></p>
+            <div id="display-feature-updated" style="font-size:12px; color:#9ca3af; margin-bottom:14px;"></div>
             <div id="action-btn-container"></div>
         </div>
 
-        <!-- 右侧评价 -->
         <div class="reviews-card">
             <div class="rating-header">
                 <h2 style="font-size: 20px; margin: 0;">任务结项评价</h2>
@@ -119,15 +119,17 @@
         </div>
     </div>
 
-    <!-- 弹窗：编辑资料 -->
     <div id="edit-modal" class="modal">
         <div class="modal-content">
             <h2 style="margin-bottom: 20px;">✍️ 编辑个人资料</h2>
             <input type="text" id="edit-dept" placeholder="院系 (如：信息与通信工程学院)">
             <input type="text" id="edit-grade" placeholder="年级 (如：2024级本科)">
-            <input type="text" id="edit-skills" placeholder="技能标签 (用逗号隔开，如：C++,海报设计,摄影)">
+            <select id="edit-campus">
+                <option value="沙河校区">沙河校区</option>
+                <option value="西土城校区">西土城校区</option>
+            </select>
             <input type="text" id="edit-portfolio" placeholder="个人主页/作品集链接 (可选)">
-            <textarea id="edit-bio" rows="4" placeholder="一句话介绍一下你的特长或性格..."></textarea>
+            <textarea id="edit-bio" rows="4" placeholder="一句话介绍你的经历/技能/偏好，可选写入 MBTI（如：我是 INTJ）"></textarea>
             <div style="display: flex; gap: 10px; justify-content: flex-end;">
                 <button onclick="closeModal('edit-modal')" style="background: #f3f4f6; color: #374151; padding: 10px 20px; border:none; border-radius: 8px; cursor: pointer;">取消</button>
                 <button onclick="saveProfile()" style="background: #10b981; color: white; padding: 10px 20px; border:none; border-radius: 8px; font-weight: bold; cursor: pointer;">保存资料</button>
@@ -135,7 +137,6 @@
         </div>
     </div>
 
-    <!-- 🌟 私聊弹窗 (复用 dashboard.html 中的聊天弹窗样式) -->
     <div id="chat-modal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.5); justify-content:center; align-items:center; z-index:101;">
         <div style="background:white; width:90%; max-width:560px; border-radius:12px; max-height:80vh; overflow:hidden; display:flex; flex-direction:column;">
             <div style="padding:14px 18px; border-bottom:1px solid #e5e7eb; display:flex; justify-content:space-between; align-items:center; gap:16px;">

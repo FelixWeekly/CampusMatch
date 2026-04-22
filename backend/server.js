@@ -1,11 +1,42 @@
 const express = require('express');
 const cors = require('cors');
+const dotenv = require('dotenv');
+const OpenAI = require('openai');
 // 【魔法在这里】直接引入 Node.js 原生自带的 SQLite，无需任何 npm 安装！
 const { DatabaseSync } = require('node:sqlite');
+
+dotenv.config();
 
 const app = express();
 app.use(cors());
 app.use(express.json());
+
+const ALLOWED_CAMPUSES = ['沙河校区', '西土城校区'];
+const RECOMMENDATION_WEIGHTS = {
+    skill: 0.24,
+    interest: 0.14,
+    mbti: 0.07,
+    semantic: 0.25,
+    success: 0.1,
+    behavior: 0.14,
+    freshness: 0.06
+};
+
+const ZHIPU_API_KEY = String(process.env.ZHIPU_API_KEY || '').trim();
+const ZHIPU_BASE_URL = String(process.env.ZHIPU_BASE_URL || 'https://open.bigmodel.cn/api/paas/v4').trim();
+const ZHIPU_MODEL = String(process.env.ZHIPU_MODEL || 'glm-4.7-flash').trim();
+const AI_RERANK_TIMEOUT_MS = Math.max(600, Number(process.env.AI_RERANK_TIMEOUT_MS || 1800));
+const AI_RERANK_CACHE_TTL_MS = Math.max(3000, Number(process.env.AI_RERANK_CACHE_TTL_MS || 45000));
+const CIRCLE_PROPOSAL_SUPPORT_THRESHOLD = Math.max(5, Number(process.env.CIRCLE_PROPOSAL_SUPPORT_THRESHOLD || 10));
+const CIRCLE_PROPOSAL_PUBLIC_DAYS = Math.max(1, Number(process.env.CIRCLE_PROPOSAL_PUBLIC_DAYS || 7));
+const AI_RERANK_ENABLED = !!ZHIPU_API_KEY;
+const aiRerankCache = new Map();
+const aiClient = AI_RERANK_ENABLED
+    ? new OpenAI({
+        apiKey: ZHIPU_API_KEY,
+        baseURL: ZHIPU_BASE_URL
+    })
+    : null;
 
 // 1. 连接数据库 (如果文件不存在会自动创建)
 const db = new DatabaseSync('./database.sqlite');
@@ -149,6 +180,109 @@ db.exec(`
         resolved_at DATETIME,
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP
     );
+
+    -- 用户多维特征画像仓库（Feature Store）
+    CREATE TABLE IF NOT EXISTS user_feature_store (
+        user_name TEXT PRIMARY KEY,
+        hard_tags TEXT DEFAULT '{}',
+        soft_tags TEXT DEFAULT '{}',
+        feature_vector TEXT DEFAULT '[]',
+        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
+
+    -- 推荐行为事件流（曝光/浏览/申请/录用/完成）
+    CREATE TABLE IF NOT EXISTS recommendation_events (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_name TEXT,
+        post_id INTEGER,
+        event_type TEXT,
+        event_value REAL DEFAULT 1,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
+
+    -- 用户偏好画像（从行为中归纳）
+    CREATE TABLE IF NOT EXISTS user_preference_profile (
+        user_name TEXT PRIMARY KEY,
+        preferred_types TEXT DEFAULT '{}',
+        preferred_campuses TEXT DEFAULT '{}',
+        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
+
+    -- 轻社区：圈子主表
+    CREATE TABLE IF NOT EXISTS community_circles (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT UNIQUE,
+        description TEXT DEFAULT '',
+        creator TEXT,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
+
+    -- 轻社区：圈子成员表
+    CREATE TABLE IF NOT EXISTS circle_members (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        circle_id INTEGER,
+        user_name TEXT,
+        role TEXT DEFAULT 'member',
+        joined_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE(circle_id, user_name)
+    );
+
+    -- 轻社区：经验贴/复盘贴
+    CREATE TABLE IF NOT EXISTS community_posts (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        author TEXT,
+        circle_id INTEGER,
+        title TEXT,
+        content TEXT,
+        post_type TEXT DEFAULT 'review',
+        project_id INTEGER,
+        tags TEXT DEFAULT '[]',
+        likes_count INTEGER DEFAULT 0,
+        comments_count INTEGER DEFAULT 0,
+        views INTEGER DEFAULT 0,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
+
+    -- 轻社区：评论
+    CREATE TABLE IF NOT EXISTS community_comments (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        post_id INTEGER,
+        author TEXT,
+        content TEXT,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
+
+    -- 轻社区：互动（先支持点赞）
+    CREATE TABLE IF NOT EXISTS community_reactions (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        post_id INTEGER,
+        user_name TEXT,
+        reaction_type TEXT DEFAULT 'like',
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE(post_id, user_name, reaction_type)
+    );
+
+    CREATE TABLE IF NOT EXISTS circle_proposals (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT,
+        description TEXT,
+        proposer TEXT,
+        status TEXT DEFAULT 'pending',
+        public_until DATETIME,
+        approved_circle_id INTEGER,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE(name, status)
+    );
+
+    CREATE TABLE IF NOT EXISTS circle_proposal_supports (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        proposal_id INTEGER,
+        user_name TEXT,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE(proposal_id, user_name)
+    );
 `);
 
 function hasColumn(tableName, columnName) {
@@ -174,6 +308,42 @@ if (!hasColumn('reviews', 'subjective_score')) {
 if (!hasColumn('reviews', 'final_score')) {
     db.exec('ALTER TABLE reviews ADD COLUMN final_score REAL;');
 }
+if (!hasColumn('users', 'campus')) {
+    db.exec("ALTER TABLE users ADD COLUMN campus TEXT DEFAULT ''; ");
+}
+if (!hasColumn('users', 'available_hours')) {
+    db.exec('ALTER TABLE users ADD COLUMN available_hours INTEGER DEFAULT 0;');
+}
+if (!hasColumn('users', 'mbti')) {
+    db.exec("ALTER TABLE users ADD COLUMN mbti TEXT DEFAULT ''; ");
+}
+if (!hasColumn('users', 'interests')) {
+    db.exec("ALTER TABLE users ADD COLUMN interests TEXT DEFAULT ''; ");
+}
+if (!hasColumn('posts', 'collaboration_mode')) {
+    db.exec("ALTER TABLE posts ADD COLUMN collaboration_mode TEXT DEFAULT 'online';");
+}
+if (!hasColumn('posts', 'campus')) {
+    db.exec("ALTER TABLE posts ADD COLUMN campus TEXT DEFAULT ''; ");
+}
+if (!hasColumn('posts', 'expected_hours')) {
+    db.exec('ALTER TABLE posts ADD COLUMN expected_hours INTEGER DEFAULT 0;');
+}
+if (!hasColumn('posts', 'structured_tags')) {
+    db.exec("ALTER TABLE posts ADD COLUMN structured_tags TEXT DEFAULT '{}';");
+}
+if (!hasColumn('posts', 'feature_vector')) {
+    db.exec("ALTER TABLE posts ADD COLUMN feature_vector TEXT DEFAULT '[]';");
+}
+if (!hasColumn('posts', 'accept_cross_campus')) {
+    db.exec('ALTER TABLE posts ADD COLUMN accept_cross_campus INTEGER DEFAULT 0;');
+}
+if (!hasColumn('posts', 'off_campus_location')) {
+    db.exec("ALTER TABLE posts ADD COLUMN off_campus_location TEXT DEFAULT ''; ");
+}
+if (!hasColumn('posts', 'requires_management')) {
+    db.exec('ALTER TABLE posts ADD COLUMN requires_management INTEGER DEFAULT 0;');
+}
 
 function getProjectByPostId(postId) {
     return db.prepare('SELECT * FROM team_projects WHERE post_id = ?').get(postId);
@@ -181,6 +351,7 @@ function getProjectByPostId(postId) {
 
 function ensureProjectForRecruitingPost(postRow) {
     if (!postRow || postRow.type !== '寻人组队') return null;
+    if (Number(postRow.requires_management || 0) !== 1) return null;
 
     let project = getProjectByPostId(postRow.id);
     if (!project) {
@@ -257,15 +428,559 @@ function buildProjectScoreboard(projectId) {
     });
 }
 
+function parseTagList(text) {
+    if (!text) return [];
+    return String(text)
+        .split(/[,，、\s]+/)
+        .map((item) => item.trim())
+        .filter(Boolean);
+}
+
+function uniqueList(items) {
+    return Array.from(new Set((items || []).filter(Boolean)));
+}
+
+function tokenizeText(text) {
+    if (!text) return [];
+    const lower = String(text).toLowerCase();
+    const latinTokens = lower.match(/[a-z0-9+#.]+/g) || [];
+    const cjkTokens = String(text).match(/[\u4e00-\u9fa5]{2,}/g) || [];
+    return [...latinTokens, ...cjkTokens];
+}
+
+function extractTagsFromText(text) {
+    const tokens = tokenizeText(text);
+    const hitSkills = [];
+    const hitInterests = [];
+
+    const skillDict = {
+        vue: ['vue', 'vue3'],
+        react: ['react', 'reactjs'],
+        python: ['python', 'py'],
+        javascript: ['javascript', 'js', 'node'],
+        java: ['java'],
+        cpp: ['c++', 'cpp'],
+        剪辑: ['剪辑', '视频剪辑', 'pr', 'premiere'],
+        设计: ['设计', 'ui', '海报', 'ps', 'figma'],
+        摄影: ['摄影', '拍摄'],
+        数据分析: ['数据分析', 'excel', 'sql', 'bi']
+    };
+
+    const interestDict = {
+        音乐: ['音乐', '吉他', '乐队'],
+        运动: ['运动', '篮球', '足球', '跑步'],
+        游戏: ['游戏', '电竞'],
+        创业: ['创业', '商业计划'],
+        竞赛: ['竞赛', '比赛', '挑战杯'],
+        志愿: ['志愿', '公益']
+    };
+
+    Object.entries(skillDict).forEach(([tag, aliases]) => {
+        if (aliases.some((alias) => tokens.includes(alias) || String(text).toLowerCase().includes(alias))) {
+            hitSkills.push(tag);
+        }
+    });
+
+    Object.entries(interestDict).forEach(([tag, aliases]) => {
+        if (aliases.some((alias) => tokens.includes(alias) || String(text).toLowerCase().includes(alias))) {
+            hitInterests.push(tag);
+        }
+    });
+
+    return {
+        skills: uniqueList(hitSkills),
+        interests: uniqueList(hitInterests)
+    };
+}
+
+function buildHashedVector(text, dim = 24) {
+    const vector = new Array(dim).fill(0);
+    const tokens = tokenizeText(text);
+
+    tokens.forEach((token) => {
+        let hash = 0;
+        for (let i = 0; i < token.length; i += 1) {
+            hash = ((hash << 5) - hash) + token.charCodeAt(i);
+            hash |= 0;
+        }
+        const idx = Math.abs(hash) % dim;
+        vector[idx] += 1;
+    });
+
+    const norm = Math.sqrt(vector.reduce((sum, value) => sum + value * value, 0));
+    if (!norm) return vector;
+    return vector.map((value) => Number((value / norm).toFixed(6)));
+}
+
+function cosineSimilarity(vecA, vecB) {
+    const len = Math.min(vecA.length, vecB.length);
+    if (!len) return 0;
+    let dot = 0;
+    let normA = 0;
+    let normB = 0;
+    for (let i = 0; i < len; i += 1) {
+        const a = Number(vecA[i] || 0);
+        const b = Number(vecB[i] || 0);
+        dot += a * b;
+        normA += a * a;
+        normB += b * b;
+    }
+    if (!normA || !normB) return 0;
+    return dot / (Math.sqrt(normA) * Math.sqrt(normB));
+}
+
+function safeJsonParse(raw, fallback) {
+    if (!raw) return fallback;
+    try {
+        return JSON.parse(raw);
+    } catch (err) {
+        return fallback;
+    }
+}
+
+function extractJsonPayload(text) {
+    const raw = String(text || '').trim();
+    if (!raw) return null;
+
+    const direct = safeJsonParse(raw, null);
+    if (direct && typeof direct === 'object') return direct;
+
+    const fencedMatch = raw.match(/```json\s*([\s\S]*?)\s*```/i) || raw.match(/```\s*([\s\S]*?)\s*```/i);
+    if (fencedMatch && fencedMatch[1]) {
+        const fenced = safeJsonParse(fencedMatch[1].trim(), null);
+        if (fenced && typeof fenced === 'object') return fenced;
+    }
+
+    const firstBrace = raw.indexOf('{');
+    const lastBrace = raw.lastIndexOf('}');
+    if (firstBrace >= 0 && lastBrace > firstBrace) {
+        const objectLike = raw.slice(firstBrace, lastBrace + 1);
+        const parsed = safeJsonParse(objectLike, null);
+        if (parsed && typeof parsed === 'object') return parsed;
+    }
+
+    return null;
+}
+
+function recordRecommendationEvent(userName, postId, eventType, eventValue = 1) {
+    if (!userName || !postId || !eventType) return;
+    db.prepare(`
+        INSERT INTO recommendation_events (user_name, post_id, event_type, event_value)
+        VALUES (?, ?, ?, ?)
+    `).run(String(userName), Number(postId), String(eventType), Number(eventValue || 1));
+}
+
+function upsertUserPreferenceProfile(userName) {
+    if (!userName) return;
+
+    const rows = db.prepare(`
+        SELECT
+            p.type,
+            p.campus,
+            SUM(
+                CASE
+                    WHEN re.event_type = 'accepted' THEN 3
+                    WHEN re.event_type = 'apply' THEN 2
+                    WHEN re.event_type = 'view' THEN 1
+                    WHEN re.event_type = 'complete' THEN 4
+                    ELSE 0
+                END * COALESCE(re.event_value, 1)
+            ) AS weight_sum
+        FROM recommendation_events re
+        JOIN posts p ON p.id = re.post_id
+        WHERE re.user_name = ?
+          AND re.created_at >= datetime('now', '-120 day')
+        GROUP BY p.type, p.campus
+    `).all(userName);
+
+    const typeWeights = {};
+    const campusWeights = {};
+
+    rows.forEach((row) => {
+        const w = Number(row.weight_sum || 0);
+        if (w <= 0) return;
+        const t = String(row.type || '').trim();
+        const c = String(row.campus || '').trim();
+        if (t) typeWeights[t] = Number(((typeWeights[t] || 0) + w).toFixed(3));
+        if (c) campusWeights[c] = Number(((campusWeights[c] || 0) + w).toFixed(3));
+    });
+
+    db.prepare(`
+        INSERT INTO user_preference_profile (user_name, preferred_types, preferred_campuses, updated_at)
+        VALUES (?, ?, ?, CURRENT_TIMESTAMP)
+        ON CONFLICT(user_name)
+        DO UPDATE SET
+            preferred_types = excluded.preferred_types,
+            preferred_campuses = excluded.preferred_campuses,
+            updated_at = CURRENT_TIMESTAMP
+    `).run(
+        userName,
+        JSON.stringify(typeWeights),
+        JSON.stringify(campusWeights)
+    );
+}
+
+function getUserPreferenceProfile(userName) {
+    const row = db.prepare('SELECT preferred_types, preferred_campuses FROM user_preference_profile WHERE user_name = ?').get(userName);
+    if (!row) return { preferred_types: {}, preferred_campuses: {} };
+    return {
+        preferred_types: safeJsonParse(row.preferred_types, {}),
+        preferred_campuses: safeJsonParse(row.preferred_campuses, {})
+    };
+}
+
+function normalizeWeightedScore(weightMap, key) {
+    const entries = Object.entries(weightMap || {});
+    if (!entries.length) return 0;
+    const maxWeight = Math.max(...entries.map(([, v]) => Number(v || 0)), 0);
+    if (!maxWeight) return 0;
+    return Math.min(1, Number(weightMap[key] || 0) / maxWeight);
+}
+
+function computeBehaviorPreferenceScore(preferenceProfile, post) {
+    const typeScore = normalizeWeightedScore(preferenceProfile.preferred_types || {}, String(post.type || ''));
+    const campusScore = normalizeWeightedScore(preferenceProfile.preferred_campuses || {}, String(post.campus || ''));
+    return Number((typeScore * 0.65 + campusScore * 0.35).toFixed(4));
+}
+
+function computeFreshnessScore(createdAtText) {
+    const ts = Date.parse(String(createdAtText || ''));
+    if (Number.isNaN(ts)) return 0.2;
+    const ageHours = Math.max(0, (Date.now() - ts) / (1000 * 60 * 60));
+    if (ageHours <= 6) return 1;
+    if (ageHours <= 24) return 0.82;
+    if (ageHours <= 72) return 0.64;
+    if (ageHours <= 168) return 0.45;
+    return 0.22;
+}
+
+function buildRecommendationContext(currentUser) {
+    const user = db.prepare('SELECT * FROM users WHERE name = ?').get(currentUser);
+    if (!user) {
+        const error = new Error('用户不存在');
+        error.statusCode = 404;
+        throw error;
+    }
+
+    upsertUserFeatureStore(user);
+    const featureRow = db.prepare('SELECT * FROM user_feature_store WHERE user_name = ?').get(currentUser);
+    const userHard = safeJsonParse(featureRow ? featureRow.hard_tags : '{}', {});
+    const userSoft = safeJsonParse(featureRow ? featureRow.soft_tags : '{}', {});
+    const userVector = safeJsonParse(featureRow ? featureRow.feature_vector : '[]', []);
+
+    upsertUserPreferenceProfile(currentUser);
+    const userPreferenceProfile = getUserPreferenceProfile(currentUser);
+
+    const allCandidates = db.prepare('SELECT * FROM posts WHERE author != ? ORDER BY created_at DESC LIMIT 300').all(currentUser);
+
+    const recalled = allCandidates.filter((post) => {
+        const acceptsCrossCampus = Number(post.accept_cross_campus || 0) === 1;
+        if (!acceptsCrossCampus && post.campus && userHard.campus && post.campus !== userHard.campus) {
+            return false;
+        }
+
+        return true;
+    });
+
+    const ranked = recalled.map((post) => {
+        const normalizedPostCampus = campusValid(post.campus) ? post.campus : '';
+        const postTags = safeJsonParse(post.structured_tags || '{}', {});
+        const postVector = safeJsonParse(post.feature_vector || '[]', []);
+        const postText = `${post.title || ''} ${post.content || ''}`;
+        const mbtiHint = getPostMbtiHint(postText);
+
+        const skillScore = overlapScore(userSoft.skills || [], postTags.skills || []);
+        const interestScore = overlapScore(userSoft.interests || [], postTags.interests || []);
+        const mbtiScore = mbtiCompatibilityScore(userSoft.mbti || '', mbtiHint);
+        const semanticScore = cosineSimilarity(userVector, postVector);
+        const successRateScore = Number(userSoft.success_rate || 0);
+        const behaviorScore = computeBehaviorPreferenceScore(userPreferenceProfile, post);
+        const freshnessScore = computeFreshnessScore(post.created_at);
+
+        const finalScore = (
+            skillScore * RECOMMENDATION_WEIGHTS.skill +
+            interestScore * RECOMMENDATION_WEIGHTS.interest +
+            mbtiScore * RECOMMENDATION_WEIGHTS.mbti +
+            semanticScore * RECOMMENDATION_WEIGHTS.semantic +
+            successRateScore * RECOMMENDATION_WEIGHTS.success +
+            behaviorScore * RECOMMENDATION_WEIGHTS.behavior +
+            freshnessScore * RECOMMENDATION_WEIGHTS.freshness
+        );
+
+        const reasons = [];
+        if (Number(post.accept_cross_campus || 0) === 1) {
+            if (normalizedPostCampus) reasons.push(`跨校区协作已开启（发布校区：${normalizedPostCampus}）`);
+            else reasons.push('跨校区协作已开启');
+        } else if (normalizedPostCampus) {
+            reasons.push(`同校区优先匹配：${normalizedPostCampus}`);
+        }
+        if (skillScore > 0) reasons.push(`技能匹配度 ${(skillScore * 100).toFixed(0)}%`);
+        if (interestScore > 0) reasons.push(`兴趣重合度 ${(interestScore * 100).toFixed(0)}%`);
+        if (semanticScore > 0) reasons.push(`语义匹配度 ${(semanticScore * 100).toFixed(0)}%`);
+        if (behaviorScore >= 0.55) reasons.push('符合你的历史申请偏好');
+        if (freshnessScore >= 0.8) reasons.push('发布较新，沟通响应更快');
+
+        return {
+            ...post,
+            campus: normalizedPostCampus,
+            recommendation_score: Number((finalScore * 100).toFixed(1)),
+            recommendation_reasons: reasons.slice(0, 3)
+        };
+    }).sort((a, b) => b.recommendation_score - a.recommendation_score);
+
+    return {
+        user,
+        ranked,
+        recall_count: recalled.length,
+        total_candidates: allCandidates.length
+    };
+}
+
+async function rerankWithAI(user, candidates, limit) {
+    if (!AI_RERANK_ENABLED || !aiClient) return null;
+    if (!Array.isArray(candidates) || !candidates.length) return [];
+
+    const compactCandidates = candidates.slice(0, 12).map((item) => ({
+        id: item.id,
+        title: String(item.title || '').slice(0, 42),
+        content: String(item.content || '').replace(/\s+/g, ' ').slice(0, 80),
+        type: item.type,
+        campus: item.campus,
+        recommendation_score: item.recommendation_score
+    }));
+
+    const userProfile = {
+        name: user.name,
+        department: user.department || '',
+        grade: user.grade || '',
+        skills: String(user.skills || '').slice(0, 80),
+        interests: String(user.interests || '').slice(0, 80),
+        bio: String(user.bio || '').slice(0, 120),
+        campus: user.campus || ''
+    };
+
+    const prompt = [
+        '你是校园任务匹配系统的重排器。',
+        '请基于用户画像，对候选帖子进行个性化重排。',
+        '返回严格 JSON，不要解释，不要 markdown。',
+        '理由必须是可执行匹配信息，禁止写“简介中有/标题提到/内容出现/文本包含”等来源描述。',
+        'JSON 格式如下：',
+        '{"ordered_ids":[1,2,3],"reason_by_id":{"1":["理由1","理由2"]}}',
+        'ordered_ids 只包含给定候选 id，且不重复，最多返回 limit 个。',
+        'reason_by_id 每个 id 只给 1 条简短中文理由（16字内），优先技能/兴趣/校区/协作方式。',
+        `limit=${limit}`,
+        `user_profile=${JSON.stringify(userProfile)}`,
+        `candidates=${JSON.stringify(compactCandidates)}`
+    ].join('\n');
+
+    const timeoutPromise = new Promise((_, reject) => {
+        setTimeout(() => reject(new Error('AI_RERANK_TIMEOUT')), AI_RERANK_TIMEOUT_MS);
+    });
+
+    const completion = await Promise.race([
+        aiClient.chat.completions.create({
+            model: ZHIPU_MODEL,
+            temperature: 0.1,
+            max_tokens: 220,
+            messages: [
+                { role: 'system', content: '你只输出 JSON。' },
+                { role: 'user', content: prompt }
+            ]
+        }),
+        timeoutPromise
+    ]);
+
+    const content = completion && completion.choices && completion.choices[0] && completion.choices[0].message
+        ? completion.choices[0].message.content
+        : '';
+    const payload = extractJsonPayload(content);
+    if (!payload || !Array.isArray(payload.ordered_ids)) return null;
+
+    const reasonById = payload.reason_by_id && typeof payload.reason_by_id === 'object'
+        ? payload.reason_by_id
+        : {};
+
+    const sourceMap = new Map(candidates.map((item) => [Number(item.id), item]));
+    const ordered = [];
+
+    function normalizeReasons(rawReasons, fallbackReasons) {
+        const blockedPatterns = [
+            /简介中有/i,
+            /标题提到/i,
+            /内容出现/i,
+            /文本包含/i,
+            /描述里/i,
+            /关键词/i
+        ];
+
+        const normalized = (rawReasons || [])
+            .map((x) => String(x || '').replace(/[。；;]+$/g, '').trim())
+            .filter(Boolean)
+            .filter((x) => x.length <= 20)
+            .filter((x) => !blockedPatterns.some((re) => re.test(x)));
+
+        if (normalized.length) return [normalized[0]];
+
+        const fallback = (fallbackReasons || [])
+            .map((x) => String(x || '').trim())
+            .filter(Boolean)
+            .filter((x) => !x.includes('语义匹配度'));
+        return fallback.length ? [fallback[0]] : [];
+    }
+
+    payload.ordered_ids.forEach((rawId) => {
+        const id = Number(rawId);
+        if (!sourceMap.has(id)) return;
+        const baseItem = sourceMap.get(id);
+        sourceMap.delete(id);
+
+        const aiReasonsRaw = reasonById[String(id)] || reasonById[id] || [];
+        const aiReasons = Array.isArray(aiReasonsRaw)
+            ? aiReasonsRaw.map((x) => String(x).trim()).filter(Boolean).slice(0, 2)
+            : [String(aiReasonsRaw || '').trim()].filter(Boolean).slice(0, 2);
+
+        const finalReasons = normalizeReasons(aiReasons, baseItem.recommendation_reasons || []);
+
+        ordered.push({
+            ...baseItem,
+            recommendation_reasons: finalReasons,
+            ai_reranked: true
+        });
+    });
+
+    sourceMap.forEach((item) => {
+        ordered.push({ ...item, ai_reranked: false });
+    });
+
+    return ordered.slice(0, limit);
+}
+
+function campusValid(campus) {
+    return ALLOWED_CAMPUSES.includes(campus);
+}
+
+function extractMbtiFromText(text) {
+    const match = String(text || '').toUpperCase().match(/(INTJ|INTP|ENTJ|ENTP|INFJ|INFP|ENFJ|ENFP|ISTJ|ISFJ|ESTJ|ESFJ|ISTP|ISFP|ESTP|ESFP)/);
+    return match ? match[1] : '';
+}
+
+function computeUserSuccessRate(userName) {
+    const row = db.prepare('SELECT AVG(final_score) AS avg_final FROM reviews WHERE reviewee = ? AND final_score IS NOT NULL').get(userName);
+    const avgFinal = row && row.avg_final ? Number(row.avg_final) : 0;
+    return Number((avgFinal / 100).toFixed(3));
+}
+
+function upsertUserFeatureStore(userRow) {
+    if (!userRow || !userRow.name) return;
+
+    const extraText = [userRow.bio || '', userRow.skills || '', userRow.interests || ''].join(' ');
+    const extracted = extractTagsFromText(extraText);
+    const skillTags = uniqueList(extracted.skills);
+    const interestTags = uniqueList(extracted.interests);
+    const mbtiFromText = extractMbtiFromText(userRow.bio || '');
+    const successRate = computeUserSuccessRate(userRow.name);
+
+    const hardTags = {
+        grade: userRow.grade || '未设置年级',
+        major: userRow.department || '未设置院系',
+        campus: campusValid(userRow.campus) ? userRow.campus : '沙河校区'
+    };
+
+    const softTags = {
+        skills: skillTags,
+        interests: interestTags,
+        mbti: mbtiFromText,
+        success_rate: successRate
+    };
+
+    const featureText = [
+        hardTags.grade,
+        hardTags.major,
+        hardTags.campus,
+        softTags.mbti,
+        skillTags.join(' '),
+        interestTags.join(' '),
+        userRow.bio || ''
+    ].join(' ');
+
+    const featureVector = buildHashedVector(featureText);
+
+    db.prepare(`
+        INSERT INTO user_feature_store (user_name, hard_tags, soft_tags, feature_vector, updated_at)
+        VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)
+        ON CONFLICT(user_name)
+        DO UPDATE SET
+            hard_tags = excluded.hard_tags,
+            soft_tags = excluded.soft_tags,
+            feature_vector = excluded.feature_vector,
+            updated_at = CURRENT_TIMESTAMP
+    `).run(
+        userRow.name,
+        JSON.stringify(hardTags),
+        JSON.stringify(softTags),
+        JSON.stringify(featureVector)
+    );
+}
+
+function buildPostFeatures(postInput) {
+    const text = [postInput.title || '', postInput.content || ''].join(' ');
+    const extracted = extractTagsFromText(text);
+    const structuredTags = {
+        skills: extracted.skills,
+        interests: extracted.interests,
+        campus: postInput.campus || '',
+        accept_cross_campus: postInput.accept_cross_campus ? 1 : 0
+    };
+    const featureVector = buildHashedVector([
+        text,
+        structuredTags.skills.join(' '),
+        structuredTags.interests.join(' '),
+        structuredTags.campus,
+        String(structuredTags.accept_cross_campus)
+    ].join(' '));
+
+    return { structuredTags, featureVector };
+}
+
+function overlapScore(listA, listB) {
+    const setA = new Set((listA || []).map((x) => String(x).toLowerCase()));
+    const setB = new Set((listB || []).map((x) => String(x).toLowerCase()));
+    if (!setA.size || !setB.size) return 0;
+    let hits = 0;
+    setA.forEach((item) => {
+        if (setB.has(item)) hits += 1;
+    });
+    return hits / Math.max(setA.size, setB.size);
+}
+
+function mbtiCompatibilityScore(userMbti, postHintMbti) {
+    const a = String(userMbti || '').toUpperCase();
+    const b = String(postHintMbti || '').toUpperCase();
+    if (!a || !b || a.length < 4 || b.length < 4) return 0.5;
+    if (a === b) return 1;
+    let same = 0;
+    for (let i = 0; i < 4; i += 1) {
+        if (a[i] === b[i]) same += 1;
+    }
+    return same / 4;
+}
+
+function getPostMbtiHint(postText) {
+    const match = String(postText || '').toUpperCase().match(/(INTJ|INTP|ENTJ|ENTP|INFJ|INFP|ENFJ|ENFP|ISTJ|ISFJ|ESTJ|ESFJ|ISTP|ISFP|ESTP|ESFP)/);
+    return match ? match[1] : '';
+}
+
 // 3. 编写【注册接口】
 app.post('/api/register', (req, res) => {
     const { name, email, password } = req.body;
     
     try {
         // 准备 SQL 语句
-        const stmt = db.prepare("INSERT INTO users (name, email, password) VALUES (?, ?, ?)");
+        const stmt = db.prepare("INSERT INTO users (name, email, password, campus) VALUES (?, ?, ?, '')");
         // 执行插入
         stmt.run(name, email, password);
+        const newUser = db.prepare('SELECT * FROM users WHERE name = ?').get(name);
+        upsertUserFeatureStore(newUser);
         res.json({ success: true, message: '注册成功！' });
     } catch (err) {
         // 如果邮箱重复，SQLite 会抛出异常被这里捕获
@@ -295,13 +1010,57 @@ app.post('/api/login', (req, res) => {
 
 // 🌟 【新增：发布帖子接口】
 app.post('/api/posts', (req, res) => {
-    const { author, title, content, type, location, compensation, pay } = req.body;
-    console.log('📝 收到发布请求:', { author, title, content, type, location, compensation });
-    try {
-        const stmt = db.prepare("INSERT INTO posts (author, title, content, type, location, compensation) VALUES (?, ?, ?, ?, ?, ?)");
-        const result = stmt.run(author, title, content, type, location || '', compensation || '');
+    const {
+        author,
+        title,
+        content,
+        type,
+        location,
+        compensation,
+        accept_cross_campus,
+        off_campus_location,
+        requires_management
+    } = req.body;
 
-        if (type === '寻人组队') {
+    const authorRow = db.prepare('SELECT campus FROM users WHERE name = ?').get(author);
+    const normalizedCampus = (authorRow && campusValid(authorRow.campus)) ? authorRow.campus : '';
+    const normalizedCrossCampus = accept_cross_campus ? 1 : 0;
+    const normalizedOffCampusLocation = String(off_campus_location || '').trim();
+    const normalizedRequiresManagement = (type === '寻人组队' && !!requires_management) ? 1 : 0;
+
+    const { structuredTags, featureVector } = buildPostFeatures({
+        title,
+        content,
+        campus: normalizedCampus,
+        accept_cross_campus: normalizedCrossCampus
+    });
+
+    console.log('📝 收到发布请求:', { author, title, type, campus: normalizedCampus, accept_cross_campus: normalizedCrossCampus });
+    try {
+        const stmt = db.prepare(`
+            INSERT INTO posts (
+                author, title, content, type, location, compensation,
+                collaboration_mode, campus, expected_hours, structured_tags, feature_vector, off_campus_location, accept_cross_campus, requires_management
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `);
+        const result = stmt.run(
+            author,
+            title,
+            content,
+            type,
+            location || '',
+            compensation || '',
+            'offline',
+            normalizedCampus,
+            0,
+            JSON.stringify(structuredTags),
+            JSON.stringify(featureVector),
+            normalizedOffCampusLocation,
+            normalizedCrossCampus,
+            normalizedRequiresManagement
+        );
+
+        if (type === '寻人组队' && normalizedRequiresManagement === 1) {
             const postRow = db.prepare('SELECT * FROM posts WHERE id = ?').get(result.lastInsertRowid);
             ensureProjectForRecruitingPost(postRow);
         }
@@ -344,7 +1103,7 @@ app.get('/api/posts', (req, res) => {
             const acceptedCount = db.prepare("SELECT COUNT(*) as count FROM applications WHERE post_id = ? AND status = 'accepted'").get(post.id);
             post.accepted_count = acceptedCount ? acceptedCount.count : 0;
 
-            if (post.type === '寻人组队') {
+            if (post.type === '寻人组队' && Number(post.requires_management || 0) === 1) {
                 const project = ensureProjectForRecruitingPost(post);
                 post.project_status = project ? project.status : 'recruiting';
             }
@@ -356,6 +1115,148 @@ app.get('/api/posts', (req, res) => {
     }
 });
 
+// 🌟 智能推荐 MVP：先召回剪枝，再排序打分
+app.get('/api/recommendations', (req, res) => {
+    const currentUser = req.query.user;
+    const limit = Math.min(30, Math.max(1, Number(req.query.limit || 8)));
+
+    if (!currentUser) {
+        return res.status(400).json({ success: false, message: '缺少 user 参数' });
+    }
+
+    try {
+        const context = buildRecommendationContext(currentUser);
+        res.json({
+            success: true,
+            data: context.ranked.slice(0, limit),
+            recall_count: context.recall_count,
+            total_candidates: context.total_candidates,
+            weights: RECOMMENDATION_WEIGHTS,
+            ai_rerank_enabled: AI_RERANK_ENABLED,
+            ai_used: false
+        });
+    } catch (err) {
+        const status = Number(err && err.statusCode) || 500;
+        const message = status === 404 ? '用户不存在' : '推荐计算失败';
+        res.status(status).json({ success: false, message });
+    }
+});
+
+// AI 重排版推荐：先走现有规则召回排序，再交给 GLM 二次重排；失败时自动回退
+app.get('/api/recommendations-ai', async (req, res) => {
+    const currentUser = req.query.user;
+    const limit = Math.min(30, Math.max(1, Number(req.query.limit || 8)));
+
+    if (!currentUser) {
+        return res.status(400).json({ success: false, message: '缺少 user 参数' });
+    }
+
+    try {
+        const context = buildRecommendationContext(currentUser);
+        const baseline = context.ranked.slice(0, limit);
+        const cacheKey = `${currentUser}:${limit}`;
+        const cached = aiRerankCache.get(cacheKey);
+        if (cached && Date.now() - cached.ts < AI_RERANK_CACHE_TTL_MS) {
+            return res.json({
+                success: true,
+                data: cached.data,
+                recall_count: context.recall_count,
+                total_candidates: context.total_candidates,
+                weights: RECOMMENDATION_WEIGHTS,
+                ai_rerank_enabled: true,
+                ai_used: true,
+                cache_hit: true,
+                fallback: false,
+                model: ZHIPU_MODEL
+            });
+        }
+
+        if (!AI_RERANK_ENABLED) {
+            return res.json({
+                success: true,
+                data: baseline,
+                recall_count: context.recall_count,
+                total_candidates: context.total_candidates,
+                weights: RECOMMENDATION_WEIGHTS,
+                ai_rerank_enabled: false,
+                ai_used: false,
+                fallback: true,
+                message: '未检测到 ZHIPU_API_KEY，已自动回退基础推荐。'
+            });
+        }
+
+        const candidatesForAI = context.ranked.slice(0, 12);
+        let reranked = null;
+        try {
+            reranked = await rerankWithAI(context.user, candidatesForAI, limit);
+        } catch (aiErr) {
+            reranked = null;
+        }
+
+        if (!reranked || !reranked.length) {
+            return res.json({
+                success: true,
+                data: baseline,
+                recall_count: context.recall_count,
+                total_candidates: context.total_candidates,
+                weights: RECOMMENDATION_WEIGHTS,
+                ai_rerank_enabled: true,
+                ai_used: false,
+                fallback: true,
+                message: 'AI 重排暂时不可用，已自动回退基础推荐。'
+            });
+        }
+
+        aiRerankCache.set(cacheKey, { ts: Date.now(), data: reranked });
+
+        return res.json({
+            success: true,
+            data: reranked,
+            recall_count: context.recall_count,
+            total_candidates: context.total_candidates,
+            weights: RECOMMENDATION_WEIGHTS,
+            ai_rerank_enabled: true,
+            ai_used: true,
+            cache_hit: false,
+            fallback: false,
+            model: ZHIPU_MODEL
+        });
+    } catch (err) {
+        const status = Number(err && err.statusCode) || 500;
+        const message = status === 404 ? '用户不存在' : 'AI 推荐计算失败';
+        return res.status(status).json({ success: false, message });
+    }
+});
+
+// 推荐配置读取接口：便于前端展示当前权重
+app.get('/api/recommendation-config', (req, res) => {
+    res.json({
+        success: true,
+        campus_options: ALLOWED_CAMPUSES,
+        cross_campus_option: 'accept_cross_campus',
+        weights: RECOMMENDATION_WEIGHTS
+    });
+});
+
+// 校外地址占位接口：当前先保留空实现，后续可接入外部地图 API
+app.post('/api/location/off-campus/resolve', (req, res) => {
+    const { address_text } = req.body || {};
+    if (!String(address_text || '').trim()) {
+        return res.status(400).json({ success: false, message: 'address_text 不能为空' });
+    }
+
+    return res.status(501).json({
+        success: false,
+        message: '校外定位接口尚未接入，当前仅支持沙河校区/西土城校区的线下匹配。',
+        placeholder: {
+            raw_address: String(address_text).trim(),
+            lng: null,
+            lat: null,
+            provider: null
+        }
+    });
+});
+
 // 🌟 【新增：提交报名/申请接口】
 app.post('/api/apply', (req, res) => {
     const { post_id, applicant_name, message } = req.body;
@@ -364,7 +1265,7 @@ app.post('/api/apply', (req, res) => {
         if (!post) return res.status(404).json({ success: false, message: '帖子不存在' });
         if (post.author === applicant_name) return res.status(400).json({ success: false, message: '不能报名自己的帖子' });
 
-        if (post.type === '寻人组队') {
+        if (post.type === '寻人组队' && Number(post.requires_management || 0) === 1) {
             const project = ensureProjectForRecruitingPost(post);
             if (project.status !== 'recruiting') {
                 return res.status(400).json({ success: false, message: '当前项目已结束招募，暂不能报名' });
@@ -378,6 +1279,7 @@ app.post('/api/apply', (req, res) => {
 
         const stmt = db.prepare("INSERT INTO applications (post_id, applicant_name, message, status) VALUES (?, ?, ?, 'pending')");
         stmt.run(post_id, applicant_name, message);
+        recordRecommendationEvent(applicant_name, post_id, 'apply', 1);
         res.json({ success: true, message: '报名成功！对方会收到你的留言。' });
     } catch (err) {
         res.status(500).json({ success: false, message: '报名失败' });
@@ -460,8 +1362,23 @@ app.delete('/api/posts/:id', (req, res) => {
 app.get('/api/profile/:username', (req, res) => {
     const username = req.params.username;
     try {
-        const user = db.prepare("SELECT name, email, department, grade, skills, bio, portfolio FROM users WHERE name = ?").get(username);
+        const user = db.prepare(`
+            SELECT name, email, department, grade, bio, portfolio, campus
+            FROM users
+            WHERE name = ?
+        `).get(username);
         if (!user) return res.status(404).json({ success: false, message: '用户不存在' });
+
+        upsertUserFeatureStore(user);
+        const featureRow = db.prepare('SELECT hard_tags, soft_tags, feature_vector, updated_at FROM user_feature_store WHERE user_name = ?').get(username);
+        const featureStore = featureRow
+            ? {
+                hard_tags: safeJsonParse(featureRow.hard_tags, {}),
+                soft_tags: safeJsonParse(featureRow.soft_tags, {}),
+                feature_vector: safeJsonParse(featureRow.feature_vector, []),
+                updated_at: featureRow.updated_at
+            }
+            : null;
 
         const reviews = db.prepare(`
             SELECT reviewer, reviewee, rating, comment, created_at, project_id, objective_score, subjective_score, final_score
@@ -478,15 +1395,30 @@ app.get('/api/profile/:username', (req, res) => {
             avgStar = Number((avgFinalScore / 20).toFixed(2));
         }
 
-        res.json({ success: true, data: user, reviews: reviews, avgFinalScore, avgStar });
+        res.json({ success: true, data: user, reviews: reviews, avgFinalScore, avgStar, featureStore });
     } catch (err) { res.status(500).json({ success: false }); }
 });
 
 // 2. 更新个人资料
 app.put('/api/profile', (req, res) => {
-    const { name, department, grade, skills, bio, portfolio } = req.body;
+    const { name, department, grade, bio, portfolio, campus } = req.body;
+    const normalizedCampus = campusValid(campus) ? campus : '';
     try {
-        db.prepare("UPDATE users SET department=?, grade=?, skills=?, bio=?, portfolio=? WHERE name=?").run(department, grade, skills, bio, portfolio, name);
+        db.prepare(`
+            UPDATE users
+            SET department = ?, grade = ?, bio = ?, portfolio = ?, campus = ?
+            WHERE name = ?
+        `).run(
+            department,
+            grade,
+            bio,
+            portfolio,
+            normalizedCampus,
+            name
+        );
+
+        const updatedUser = db.prepare('SELECT * FROM users WHERE name = ?').get(name);
+        upsertUserFeatureStore(updatedUser);
         res.json({ success: true, message: '资料保存成功！' });
     } catch (err) { res.status(500).json({ success: false }); }
 });
@@ -509,7 +1441,7 @@ app.post('/api/applications/:id/decision', (req, res) => {
         if (!post) return res.status(404).json({ success: false, message: '关联帖子不存在' });
         if (post.author !== owner) return res.status(403).json({ success: false, message: '无权审批该申请' });
 
-        if (post.type === '寻人组队') {
+        if (post.type === '寻人组队' && Number(post.requires_management || 0) === 1) {
             const project = ensureProjectForRecruitingPost(post);
             if (project.status !== 'recruiting') {
                 return res.status(400).json({ success: false, message: '当前项目非招募阶段，不能继续审批' });
@@ -522,6 +1454,10 @@ app.post('/api/applications/:id/decision', (req, res) => {
 
         db.prepare('UPDATE applications SET status = ?, decided_at = CURRENT_TIMESTAMP WHERE id = ?')
             .run(decision, applicationId);
+
+        if (decision === 'accepted') {
+            recordRecommendationEvent(appRow.applicant_name, appRow.post_id, 'accepted', 1);
+        }
 
         res.json({ success: true, message: decision === 'accepted' ? '已通过并加入队伍' : '已拒绝该申请' });
     } catch (err) {
@@ -541,6 +1477,7 @@ app.get('/api/my-projects', (req, res) => {
             JOIN posts p ON p.id = tp.post_id
             JOIN team_members tm ON tm.project_id = tp.id
             WHERE tm.user_name = ?
+              AND COALESCE(p.requires_management, 0) = 1
             ORDER BY tp.created_at DESC
         `).all(currentUser);
 
@@ -571,8 +1508,10 @@ app.get('/api/projects-preview', (req, res) => {
         const projects = db.prepare(`
             SELECT DISTINCT tp.id, tp.title, tp.status, tp.owner, tp.created_at
             FROM team_projects tp
+                        JOIN posts p ON p.id = tp.post_id
             JOIN team_members tm ON tm.project_id = tp.id
             WHERE tm.user_name = ?
+                            AND COALESCE(p.requires_management, 0) = 1
             ORDER BY tp.created_at DESC
             LIMIT 12
         `).all(currentUser);
@@ -646,6 +1585,10 @@ app.put('/api/projects/:id/status', (req, res) => {
             db.prepare('UPDATE team_projects SET status = ?, started_at = CURRENT_TIMESTAMP WHERE id = ?').run(status, projectId);
         } else if (status === 'completed') {
             db.prepare('UPDATE team_projects SET status = ?, ended_at = CURRENT_TIMESTAMP WHERE id = ?').run(status, projectId);
+            const projectMembers = db.prepare('SELECT user_name FROM team_members WHERE project_id = ?').all(projectId);
+            projectMembers.forEach((member) => {
+                recordRecommendationEvent(member.user_name, project.post_id, 'complete', 1);
+            });
         } else {
             db.prepare('UPDATE team_projects SET status = ? WHERE id = ?').run(status, projectId);
         }
@@ -978,6 +1921,461 @@ app.post('/api/projects/:id/ratings', (req, res) => {
     }
 });
 
+function resolveCircleProposal(proposalId) {
+    const proposal = db.prepare('SELECT * FROM circle_proposals WHERE id = ?').get(proposalId);
+    if (!proposal) return null;
+    if (proposal.status !== 'pending') return proposal;
+
+    const now = Date.now();
+    const deadline = Date.parse(String(proposal.public_until || ''));
+    if (!Number.isNaN(deadline) && now > deadline) {
+        db.prepare("UPDATE circle_proposals SET status = 'expired', updated_at = CURRENT_TIMESTAMP WHERE id = ?")
+            .run(proposalId);
+        return db.prepare('SELECT * FROM circle_proposals WHERE id = ?').get(proposalId);
+    }
+
+    const supportCount = db.prepare('SELECT COUNT(*) AS count FROM circle_proposal_supports WHERE proposal_id = ?').get(proposalId).count || 0;
+    if (supportCount < CIRCLE_PROPOSAL_SUPPORT_THRESHOLD) return proposal;
+
+    const exists = db.prepare('SELECT id FROM community_circles WHERE name = ?').get(proposal.name);
+    if (exists) {
+        db.prepare("UPDATE circle_proposals SET status = 'rejected', updated_at = CURRENT_TIMESTAMP WHERE id = ?")
+            .run(proposalId);
+        return db.prepare('SELECT * FROM circle_proposals WHERE id = ?').get(proposalId);
+    }
+
+    const insert = db.prepare('INSERT INTO community_circles (name, description, creator) VALUES (?, ?, ?)')
+        .run(proposal.name, proposal.description, proposal.proposer);
+    const circleId = insert.lastInsertRowid;
+    db.prepare('INSERT OR IGNORE INTO circle_members (circle_id, user_name, role) VALUES (?, ?, ?)')
+        .run(circleId, proposal.proposer, 'owner');
+
+    db.prepare("UPDATE circle_proposals SET status = 'approved', approved_circle_id = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?")
+        .run(circleId, proposalId);
+
+    return db.prepare('SELECT * FROM circle_proposals WHERE id = ?').get(proposalId);
+}
+
+app.post('/api/circles', (req, res) => {
+    const { creator, name, description } = req.body;
+    const circleName = String(name || '').trim();
+    const circleDescription = String(description || '').trim();
+
+    if (!creator || !circleName || !circleDescription) {
+        return res.status(400).json({ success: false, message: 'creator、name、description 都不能为空' });
+    }
+
+    try {
+        const exists = db.prepare('SELECT id FROM community_circles WHERE name = ?').get(circleName);
+        if (exists) {
+            return res.status(400).json({ success: false, message: '该圈子已存在' });
+        }
+
+        const pending = db.prepare("SELECT id FROM circle_proposals WHERE name = ? AND status = 'pending'").get(circleName);
+        if (pending) {
+            return res.status(400).json({ success: false, message: '该圈子正在公示中' });
+        }
+
+        const publicUntil = new Date(Date.now() + CIRCLE_PROPOSAL_PUBLIC_DAYS * 24 * 60 * 60 * 1000).toISOString();
+        const insertResult = db.prepare(`
+            INSERT INTO circle_proposals (name, description, proposer, status, public_until)
+            VALUES (?, ?, ?, 'pending', ?)
+        `).run(circleName, circleDescription, creator, publicUntil);
+        const proposalId = insertResult.lastInsertRowid;
+
+        db.prepare('INSERT OR IGNORE INTO circle_proposal_supports (proposal_id, user_name) VALUES (?, ?)')
+            .run(proposalId, creator);
+
+        const supportCount = db.prepare('SELECT COUNT(*) AS count FROM circle_proposal_supports WHERE proposal_id = ?').get(proposalId).count || 0;
+
+        res.json({
+            success: true,
+            message: `已进入公示，当前支持 ${supportCount}/${CIRCLE_PROPOSAL_SUPPORT_THRESHOLD}`,
+            data: {
+                proposal_id: proposalId,
+                support_count: supportCount,
+                threshold: CIRCLE_PROPOSAL_SUPPORT_THRESHOLD,
+                public_until: publicUntil
+            }
+        });
+    } catch (err) {
+        res.status(400).json({ success: false, message: '圈子公示创建失败' });
+    }
+});
+
+app.get('/api/circle-proposals', (req, res) => {
+    const currentUser = req.query.user;
+    const limit = Math.min(120, Math.max(1, Number(req.query.limit || 40)));
+
+    try {
+        const rows = db.prepare(`
+            SELECT p.*,
+                   (SELECT COUNT(*) FROM circle_proposal_supports s WHERE s.proposal_id = p.id) AS support_count
+            FROM circle_proposals p
+            ORDER BY p.created_at DESC
+            LIMIT ?
+        `).all(limit);
+
+        const supportedSet = new Set();
+        if (currentUser) {
+            const supported = db.prepare('SELECT proposal_id FROM circle_proposal_supports WHERE user_name = ?').all(currentUser);
+            supported.forEach((row) => supportedSet.add(Number(row.proposal_id)));
+        }
+
+        const data = rows.map((row) => {
+            const resolved = resolveCircleProposal(row.id) || row;
+            return {
+                ...resolved,
+                support_count: row.support_count,
+                threshold: CIRCLE_PROPOSAL_SUPPORT_THRESHOLD,
+                supported_by_me: supportedSet.has(Number(row.id))
+            };
+        });
+
+        res.json({ success: true, data, threshold: CIRCLE_PROPOSAL_SUPPORT_THRESHOLD, public_days: CIRCLE_PROPOSAL_PUBLIC_DAYS });
+    } catch (err) {
+        res.status(500).json({ success: false, message: '获取圈子公示失败' });
+    }
+});
+
+app.post('/api/circle-proposals/:id/support', (req, res) => {
+    const proposalId = Number(req.params.id);
+    const { user } = req.body;
+    if (!user || !proposalId) return res.status(400).json({ success: false, message: '缺少必要参数' });
+
+    try {
+        const proposal = db.prepare('SELECT * FROM circle_proposals WHERE id = ?').get(proposalId);
+        if (!proposal) return res.status(404).json({ success: false, message: '提案不存在' });
+
+        const resolved = resolveCircleProposal(proposalId);
+        if (!resolved || resolved.status !== 'pending') {
+            return res.status(400).json({ success: false, message: '该提案已结束公示' });
+        }
+
+        db.prepare('INSERT OR IGNORE INTO circle_proposal_supports (proposal_id, user_name) VALUES (?, ?)')
+            .run(proposalId, user);
+
+        const afterResolve = resolveCircleProposal(proposalId);
+        const supportCount = db.prepare('SELECT COUNT(*) AS count FROM circle_proposal_supports WHERE proposal_id = ?').get(proposalId).count || 0;
+        const approved = afterResolve && afterResolve.status === 'approved';
+
+        res.json({
+            success: true,
+            message: approved ? '支持已达阈值，圈子已正式开通' : `已支持，当前 ${supportCount}/${CIRCLE_PROPOSAL_SUPPORT_THRESHOLD}`,
+            data: {
+                proposal_id: proposalId,
+                support_count: supportCount,
+                threshold: CIRCLE_PROPOSAL_SUPPORT_THRESHOLD,
+                status: afterResolve ? afterResolve.status : 'pending',
+                approved_circle_id: afterResolve ? afterResolve.approved_circle_id : null
+            }
+        });
+    } catch (err) {
+        res.status(500).json({ success: false, message: '支持操作失败' });
+    }
+});
+
+app.get('/api/circles', (req, res) => {
+    const currentUser = req.query.user;
+    try {
+        const rows = db.prepare(`
+            SELECT c.*, COUNT(cm.id) AS member_count
+            FROM community_circles c
+            LEFT JOIN circle_members cm ON cm.circle_id = c.id
+            GROUP BY c.id
+            ORDER BY c.created_at DESC
+        `).all();
+
+        const joinedSet = new Set();
+        if (currentUser) {
+            const joined = db.prepare('SELECT circle_id FROM circle_members WHERE user_name = ?').all(currentUser);
+            joined.forEach((row) => joinedSet.add(Number(row.circle_id)));
+        }
+
+        const data = rows.map((row) => ({
+            ...row,
+            member_count: Number(row.member_count || 0),
+            joined: joinedSet.has(Number(row.id))
+        }));
+        res.json({ success: true, data });
+    } catch (err) {
+        res.status(500).json({ success: false, message: '获取圈子列表失败' });
+    }
+});
+
+app.post('/api/circles/:id/join', (req, res) => {
+    const circleId = req.params.id;
+    const { user } = req.body;
+    if (!user) return res.status(400).json({ success: false, message: '缺少 user 参数' });
+
+    try {
+        const circle = db.prepare('SELECT id FROM community_circles WHERE id = ?').get(circleId);
+        if (!circle) return res.status(404).json({ success: false, message: '圈子不存在' });
+
+        db.prepare('INSERT OR IGNORE INTO circle_members (circle_id, user_name, role) VALUES (?, ?, ?)')
+            .run(circleId, user, 'member');
+        res.json({ success: true, message: '已加入圈子' });
+    } catch (err) {
+        res.status(500).json({ success: false, message: '加入圈子失败' });
+    }
+});
+
+app.delete('/api/circles/:id/join', (req, res) => {
+    const circleId = req.params.id;
+    const { user } = req.body;
+    if (!user) return res.status(400).json({ success: false, message: '缺少 user 参数' });
+
+    try {
+        db.prepare("DELETE FROM circle_members WHERE circle_id = ? AND user_name = ? AND role != 'owner'")
+            .run(circleId, user);
+        res.json({ success: true, message: '已退出圈子' });
+    } catch (err) {
+        res.status(500).json({ success: false, message: '退出圈子失败' });
+    }
+});
+
+app.post('/api/community/posts', (req, res) => {
+    const { author, circle_id, title, content, project_id } = req.body;
+    const normalizedTitle = String(title || '').trim();
+    const normalizedContent = String(content || '').trim();
+    const normalizedType = 'discussion';
+
+    if (!author || !normalizedTitle || !normalizedContent) {
+        return res.status(400).json({ success: false, message: 'author/title/content 不能为空' });
+    }
+
+    try {
+        if (circle_id) {
+            const isMember = db.prepare('SELECT id FROM circle_members WHERE circle_id = ? AND user_name = ?').get(circle_id, author);
+            if (!isMember) return res.status(403).json({ success: false, message: '加入圈子后才能在圈内发帖' });
+        }
+
+        if (project_id) {
+            const project = db.prepare('SELECT * FROM team_projects WHERE id = ?').get(project_id);
+            if (!project) return res.status(404).json({ success: false, message: '关联项目不存在' });
+            if (!isProjectMember(project_id, author)) return res.status(403).json({ success: false, message: '仅项目成员可关联该项目' });
+        }
+
+        const result = db.prepare(`
+            INSERT INTO community_posts (author, circle_id, title, content, post_type, project_id, tags)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+        `).run(
+            author,
+            circle_id || null,
+            normalizedTitle,
+            normalizedContent,
+            normalizedType,
+            project_id || null,
+            '[]'
+        );
+
+        res.json({ success: true, message: '发布成功', data: { id: result.lastInsertRowid } });
+    } catch (err) {
+        res.status(500).json({ success: false, message: '社区发帖失败' });
+    }
+});
+
+app.get('/api/community/posts', (req, res) => {
+    const currentUser = req.query.user;
+    const limit = Math.min(80, Math.max(1, Number(req.query.limit || 30)));
+
+    try {
+        const rows = db.prepare(`
+            SELECT cp.*, cc.name AS circle_name
+            FROM community_posts cp
+            LEFT JOIN community_circles cc ON cc.id = cp.circle_id
+            ORDER BY cp.created_at DESC
+            LIMIT ?
+        `).all(limit);
+
+        let likedSet = new Set();
+        if (currentUser) {
+            const liked = db.prepare("SELECT post_id FROM community_reactions WHERE user_name = ? AND reaction_type = 'like'").all(currentUser);
+            likedSet = new Set(liked.map((x) => Number(x.post_id)));
+        }
+
+        const data = rows.map((row) => ({
+            ...row,
+            liked_by_me: likedSet.has(Number(row.id))
+        }));
+        res.json({ success: true, data });
+    } catch (err) {
+        res.status(500).json({ success: false, message: '获取社区帖子失败' });
+    }
+});
+
+app.get('/api/community/recommendations', (req, res) => {
+    const currentUser = req.query.user;
+    const limit = Math.min(20, Math.max(1, Number(req.query.limit || 8)));
+    if (!currentUser) return res.status(400).json({ success: false, message: '缺少 user 参数' });
+
+    try {
+        const user = db.prepare('SELECT * FROM users WHERE name = ?').get(currentUser);
+        if (!user) return res.status(404).json({ success: false, message: '用户不存在' });
+
+        upsertUserFeatureStore(user);
+        const featureRow = db.prepare('SELECT * FROM user_feature_store WHERE user_name = ?').get(currentUser);
+        const userSoft = safeJsonParse(featureRow ? featureRow.soft_tags : '{}', {});
+        const userVector = safeJsonParse(featureRow ? featureRow.feature_vector : '[]', []);
+        const joinedRows = db.prepare('SELECT circle_id FROM circle_members WHERE user_name = ?').all(currentUser);
+        const joinedSet = new Set(joinedRows.map((x) => Number(x.circle_id)));
+
+        const candidatePosts = db.prepare(`
+            SELECT cp.*, cc.name AS circle_name
+            FROM community_posts cp
+            LEFT JOIN community_circles cc ON cc.id = cp.circle_id
+            WHERE cp.author != ?
+            ORDER BY cp.created_at DESC
+            LIMIT 240
+        `).all(currentUser);
+
+        const postRec = candidatePosts.map((post) => {
+            const text = `${post.title || ''} ${post.content || ''}`;
+            const pVec = buildHashedVector(text);
+            const semantic = cosineSimilarity(userVector, pVec);
+            const interestOverlap = overlapScore(userSoft.interests || [], extractTagsFromText(text).interests || []);
+            const engagement = Math.min(1, ((Number(post.likes_count || 0) * 2) + (Number(post.comments_count || 0) * 3) + (Number(post.views || 0) * 0.08)) / 30);
+            const freshness = computeFreshnessScore(post.created_at);
+            const joinedBoost = post.circle_id && joinedSet.has(Number(post.circle_id)) ? 0.08 : 0;
+            const score = semantic * 0.52 + interestOverlap * 0.18 + engagement * 0.18 + freshness * 0.12 + joinedBoost;
+            return {
+                ...post,
+                recommendation_score: Number((score * 100).toFixed(1)),
+                recommendation_reasons: [
+                    semantic > 0.35 ? '内容兴趣相关' : '',
+                    engagement > 0.45 ? '互动活跃' : '',
+                    freshness > 0.75 ? '发布较新' : '',
+                    joinedBoost > 0 ? '来自你已加入圈子' : ''
+                ].filter(Boolean).slice(0, 2)
+            };
+        }).sort((a, b) => b.recommendation_score - a.recommendation_score).slice(0, limit);
+
+        const circles = db.prepare(`
+            SELECT c.*, COUNT(cm.id) AS member_count
+            FROM community_circles c
+            LEFT JOIN circle_members cm ON cm.circle_id = c.id
+            GROUP BY c.id
+            ORDER BY c.created_at DESC
+            LIMIT 120
+        `).all();
+
+        const circleRec = circles
+            .filter((circle) => !joinedSet.has(Number(circle.id)))
+            .map((circle) => {
+                const recent = db.prepare('SELECT title, content FROM community_posts WHERE circle_id = ? ORDER BY created_at DESC LIMIT 6').all(circle.id);
+                const text = [circle.name, circle.description, ...recent.map((x) => `${x.title || ''} ${x.content || ''}`)].join(' ');
+                const cVec = buildHashedVector(text);
+                const semantic = cosineSimilarity(userVector, cVec);
+                const popularity = Math.min(1, Number(circle.member_count || 0) / 60);
+                const score = semantic * 0.72 + popularity * 0.28;
+                return {
+                    ...circle,
+                    member_count: Number(circle.member_count || 0),
+                    recommendation_score: Number((score * 100).toFixed(1)),
+                    recommendation_reasons: [semantic > 0.3 ? '主题与你匹配' : '值得探索', popularity > 0.5 ? '圈子活跃度较高' : '新兴圈子']
+                };
+            })
+            .sort((a, b) => b.recommendation_score - a.recommendation_score)
+            .slice(0, Math.min(8, limit));
+
+        res.json({ success: true, data: { posts: postRec, circles: circleRec } });
+    } catch (err) {
+        res.status(500).json({ success: false, message: '社区推荐计算失败' });
+    }
+});
+
+// 17. 圈子 Feed
+app.get('/api/circles/:id/feed', (req, res) => {
+    const circleId = req.params.id;
+    const limit = Math.min(60, Math.max(1, Number(req.query.limit || 20)));
+    try {
+        const rows = db.prepare(`
+            SELECT cp.*, cc.name AS circle_name
+            FROM community_posts cp
+            LEFT JOIN community_circles cc ON cc.id = cp.circle_id
+            WHERE cp.circle_id = ?
+            ORDER BY cp.created_at DESC
+            LIMIT ?
+        `).all(circleId, limit);
+        res.json({ success: true, data: rows.map((row) => ({ ...row, tags: safeJsonParse(row.tags, []) })) });
+    } catch (err) {
+        res.status(500).json({ success: false, message: '获取圈子流失败' });
+    }
+});
+
+// 18. 社区互动：浏览/评论/点赞
+app.put('/api/community/posts/:id/view', (req, res) => {
+    const postId = req.params.id;
+    try {
+        db.prepare('UPDATE community_posts SET views = views + 1, updated_at = CURRENT_TIMESTAMP WHERE id = ?').run(postId);
+        res.json({ success: true });
+    } catch (err) {
+        res.status(500).json({ success: false, message: '更新浏览失败' });
+    }
+});
+
+app.post('/api/community/posts/:id/comments', (req, res) => {
+    const postId = req.params.id;
+    const { author, content } = req.body;
+    const normalizedContent = String(content || '').trim();
+
+    if (!author || !normalizedContent) {
+        return res.status(400).json({ success: false, message: 'author/content 不能为空' });
+    }
+
+    try {
+        const exists = db.prepare('SELECT id FROM community_posts WHERE id = ?').get(postId);
+        if (!exists) return res.status(404).json({ success: false, message: '帖子不存在' });
+
+        db.prepare('INSERT INTO community_comments (post_id, author, content) VALUES (?, ?, ?)')
+            .run(postId, author, normalizedContent);
+        db.prepare('UPDATE community_posts SET comments_count = comments_count + 1, updated_at = CURRENT_TIMESTAMP WHERE id = ?')
+            .run(postId);
+
+        res.json({ success: true, message: '评论成功' });
+    } catch (err) {
+        res.status(500).json({ success: false, message: '评论失败' });
+    }
+});
+
+app.get('/api/community/posts/:id/comments', (req, res) => {
+    const postId = req.params.id;
+    const limit = Math.min(200, Math.max(1, Number(req.query.limit || 50)));
+    try {
+        const rows = db.prepare('SELECT * FROM community_comments WHERE post_id = ? ORDER BY created_at ASC LIMIT ?').all(postId, limit);
+        res.json({ success: true, data: rows });
+    } catch (err) {
+        res.status(500).json({ success: false, message: '获取评论失败' });
+    }
+});
+
+app.post('/api/community/posts/:id/like', (req, res) => {
+    const postId = req.params.id;
+    const { user } = req.body;
+    if (!user) return res.status(400).json({ success: false, message: '缺少 user 参数' });
+
+    try {
+        const exists = db.prepare("SELECT id FROM community_reactions WHERE post_id = ? AND user_name = ? AND reaction_type = 'like'")
+            .get(postId, user);
+
+        if (exists) {
+            db.prepare("DELETE FROM community_reactions WHERE post_id = ? AND user_name = ? AND reaction_type = 'like'")
+                .run(postId, user);
+            db.prepare('UPDATE community_posts SET likes_count = CASE WHEN likes_count > 0 THEN likes_count - 1 ELSE 0 END, updated_at = CURRENT_TIMESTAMP WHERE id = ?')
+                .run(postId);
+            return res.json({ success: true, liked: false });
+        }
+
+        db.prepare("INSERT INTO community_reactions (post_id, user_name, reaction_type) VALUES (?, ?, 'like')")
+            .run(postId, user);
+        db.prepare('UPDATE community_posts SET likes_count = likes_count + 1, updated_at = CURRENT_TIMESTAMP WHERE id = ?')
+            .run(postId);
+        return res.json({ success: true, liked: true });
+    } catch (err) {
+        return res.status(500).json({ success: false, message: '点赞操作失败' });
+    }
+});
+
 // 🌟 【新增：获取私聊对话历史】
 app.get('/api/conversation', (req, res) => {
     const { user, with: withUser } = req.query;
@@ -1022,8 +2420,12 @@ app.post('/api/messages', (req, res) => {
 // 🌟 【新增：浏览帖子时更新热度】
 app.put('/api/posts/:id/view', (req, res) => {
     const postId = req.params.id;
+    const currentUser = req.query.user;
     try {
         db.prepare("UPDATE posts SET popularity = popularity + 1 WHERE id = ?").run(postId);
+        if (currentUser) {
+            recordRecommendationEvent(currentUser, postId, 'view', 1);
+        }
         res.json({ success: true });
     } catch (err) {
         res.status(500).json({ success: false });
