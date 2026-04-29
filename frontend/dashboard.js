@@ -26,6 +26,8 @@ window.onload = function() {
             }
         });
     }
+
+    updateQuickNavActive();
 };
 
 function logout() {
@@ -129,16 +131,60 @@ function scrollToTop() {
 
 function updateQuickNavActive() {
     const topEl = document.getElementById('top-section');
+    const postsEl = document.getElementById('posts-section');
     const teamEl = document.getElementById('team-center-section');
-    const postsRect = document.getElementById('posts-section')?.getBoundingClientRect();
-    const teamRect = teamEl?.getBoundingClientRect();
     const viewportMark = window.innerHeight * 0.3;
-    let active = 'top';
+    const scrollHeight = document.documentElement.scrollHeight;
+    const maxScrollY = Math.max(0, scrollHeight - window.innerHeight);
+    const clampedScrollY = Math.max(0, Math.min(window.scrollY, maxScrollY));
+    let active = null;
+    let indicatorPercent = 0;
 
-    if (teamRect && teamRect.top <= viewportMark) {
-        active = 'team';
-    } else if (postsRect && postsRect.top <= viewportMark) {
-        active = 'posts';
+    if (topEl && postsEl && teamEl) {
+        const topY = topEl.getBoundingClientRect().top + window.scrollY;
+        const postsY = postsEl.getBoundingClientRect().top + window.scrollY;
+        const teamY = teamEl.getBoundingClientRect().top + window.scrollY;
+
+        // 用同一套阈值控制“激活态”和“进度位置”，避免显示不同步。
+        const topTriggerY = Math.max(0, topY);
+        const postsTriggerY = Math.max(topTriggerY, postsY - viewportMark);
+        const teamTriggerY = Math.min(
+            maxScrollY,
+            Math.max(postsTriggerY + 1, teamY - viewportMark)
+        );
+
+        const indicator = document.getElementById('quick-progress-indicator');
+        if (indicator) {
+            if (clampedScrollY <= postsTriggerY) {
+                const d1 = Math.max(1, postsTriggerY - topTriggerY);
+                indicatorPercent = ((clampedScrollY - topTriggerY) / d1) * 50;
+            } else {
+                const d2 = Math.max(1, teamTriggerY - postsTriggerY);
+                indicatorPercent = 50 + ((clampedScrollY - postsTriggerY) / d2) * 50;
+            }
+            indicatorPercent = Math.max(0, Math.min(100, indicatorPercent));
+            indicator.style.top = `${indicatorPercent}%`;
+        }
+
+        // 仅在指示器“碰到节点”时点亮对应节点。
+        const indicatorRect = indicator?.getBoundingClientRect();
+        if (indicatorRect) {
+            const indicatorCenterY = indicatorRect.top + indicatorRect.height / 2;
+            const touchTolerance = Math.max(indicatorRect.height * 0.45, 10);
+            let bestDist = Number.POSITIVE_INFINITY;
+
+            ['top', 'posts', 'team'].forEach((key) => {
+                const dot = document.querySelector(`#nav-${key} .quick-nav-dot`);
+                if (!dot) return;
+                const dotRect = dot.getBoundingClientRect();
+                const dotCenterY = dotRect.top + dotRect.height / 2;
+                const dist = Math.abs(dotCenterY - indicatorCenterY);
+                if (dist <= touchTolerance && dist < bestDist) {
+                    bestDist = dist;
+                    active = key;
+                }
+            });
+        }
     }
 
     ['top', 'posts', 'team'].forEach((key) => {
@@ -147,16 +193,6 @@ function updateQuickNavActive() {
         if (key === active) el.classList.add('active');
         else el.classList.remove('active');
     });
-
-    const indicator = document.getElementById('quick-progress-indicator');
-    if (indicator && topEl && teamEl) {
-        const topY = topEl.getBoundingClientRect().top + window.scrollY;
-        const teamY = teamEl.getBoundingClientRect().top + window.scrollY;
-        const denominator = Math.max(1, teamY - topY);
-        const raw = ((window.scrollY - topY) / denominator) * 100;
-        const percent = Math.max(0, Math.min(100, raw));
-        indicator.style.top = `${percent}%`;
-    }
 }
 
 function scheduleQuickNavUpdate() {
@@ -976,7 +1012,7 @@ function renderSimpleHomeFlow(projectsCount) {
             <span style="font-size:12px; background:#eff6ff; color:#1d4ed8; padding:4px 8px; border-radius:999px;">人员组成</span>
             <span style="font-size:12px; background:#f0fdf4; color:#166534; padding:4px 8px; border-radius:999px;">日常打卡防放鸽子</span>
         </div>
-        <div style="font-size:13px; color:#475569; line-height:1.6;">轻量任务不需要复杂治理；只有你参与了开启团队管理的项目，才会展示下方项目管理界面。</div>
+        <div style="font-size:13px; color:#475569; line-height:1.6;">只有你参与了开启项目管理的项目，才会展示下方项目管理界面。</div>
     `;
 }
 
@@ -1104,7 +1140,7 @@ async function loadProjectPreviews() {
             activeProjectId = target.id;
             await loadProjectDetail(activeProjectId);
         } else {
-            document.getElementById('project-detail-panel').innerHTML = '<p style="color:#9ca3af; font-size:14px;">你还没有参与开启团队管理的项目。</p>';
+            document.getElementById('project-detail-panel').innerHTML = '<p style="color:#9ca3af; font-size:14px;">你还没有参与开启项目管理的项目。</p>';
         }
     } catch (err) {
         console.error('加载项目预览失败', err);
@@ -1120,7 +1156,7 @@ function openFullTeamCenter(projectId) {
         window.location.href = `team_management.html?project=${activeProjectId}`;
         return;
     }
-    alert('当前没有开启团队管理的重协作项目，先发布并开启团队管理后再进入。');
+    alert('当前没有开启项目管理的重协作项目，先发布并开启项目管理后再进入。');
 }
 
 async function loadRecommendations() {

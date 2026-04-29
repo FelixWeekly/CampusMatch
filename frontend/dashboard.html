@@ -12,7 +12,7 @@
         <div class="quick-progress-line" id="quick-progress-line">
             <div class="quick-progress-indicator" id="quick-progress-indicator"></div>
         </div>
-        <button class="quick-nav-item active" id="nav-top" onclick="scrollToSection('top')">
+        <button class="quick-nav-item" id="nav-top" onclick="scrollToSection('top')">
             <span class="quick-nav-dot"></span>
             <span class="quick-nav-text">顶部</span>
         </button>
@@ -69,8 +69,8 @@
                     <label for="post-cross-campus" style="color:#4b5563; font-size:15px; margin:0; cursor:pointer; flex-shrink:0;">接受跨校区合作</label>
                 </div>
                 <div id="management-section">
-                    <input type="checkbox" id="post-requires-management" style="width:18px; height:18px; cursor:pointer; accent-color:#0ea5e9; margin:0; position:relative; top:3px;">
-                    <label for="post-requires-management" style="color:#4b5563; font-size:15px; margin:0; cursor:pointer; flex-shrink:0;">开启团队管理（仅长期重协作项目）</label>
+                    <input type="checkbox" id="post-requires-management" style="width:18px; height:18px; cursor:pointer; accent-color:#3b82f6; margin:0; position:relative; top:3px;">
+                    <label for="post-requires-management" style="color:#4b5563; font-size:15px; margin:0; cursor:pointer; flex-shrink:0;">开启项目管理</label>
                 </div>
             </div>
 
@@ -131,14 +131,12 @@
         </div>
 
         <div class="team-center" id="team-center-section">
-            <div class="team-center-header">
+            <div class="team-center-header" style="margin-bottom:18px;">
                 <h2 style="margin:0; font-size:22px; color:#111827;">项目流程</h2>
                 <div style="display:flex; gap:8px; align-items:center;">
                     <button class="btn-inbox" style="padding:8px 14px;" onclick="loadProjectPreviews()">刷新</button>
                 </div>
             </div>
-            <p style="margin: 10px 0 18px 0; color:#6b7280; font-size:14px;">轻需求默认走简化流程，只有开启团队管理的重协作项目才展示项目管理入口。</p>
-
             <div id="simple-flow-panel" class="project-detail-panel" style="margin-bottom:14px; background:#fff;"></div>
 
             <div class="team-center-grid" id="team-management-grid">

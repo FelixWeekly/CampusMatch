@@ -699,6 +699,7 @@ button:hover {
 .dashboard-page-body .dashboard-container {
     max-width: 980px;
     margin: 28px auto 48px auto;
+    padding-bottom: 64px;
 }
 
 .dashboard-page-body .dash-header,
