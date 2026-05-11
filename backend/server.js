@@ -16,10 +16,11 @@ const RECOMMENDATION_WEIGHTS = {
     skill: 0.24,
     interest: 0.14,
     mbti: 0.07,
-    semantic: 0.25,
-    success: 0.1,
-    behavior: 0.14,
-    freshness: 0.06
+    semantic: 0.23,
+    success: 0.09,
+    behavior: 0.13,
+    freshness: 0.06,
+    activity: 0.04
 };
 
 const ZHIPU_API_KEY = String(process.env.ZHIPU_API_KEY || '').trim();
@@ -62,6 +63,7 @@ db.exec(`
         title TEXT,
         content TEXT,
         type TEXT,
+        post_labels TEXT DEFAULT '[]',
         location TEXT DEFAULT '',
         compensation TEXT DEFAULT '',
         popularity INTEGER DEFAULT 0,
@@ -178,6 +180,45 @@ db.exec(`
         resolution_note TEXT DEFAULT '',
         resolved_by TEXT,
         resolved_at DATETIME,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
+
+    -- 项目需求池：一个项目下可持续发布多个需求
+    CREATE TABLE IF NOT EXISTS project_requirements (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        project_id INTEGER,
+        title TEXT,
+        description TEXT DEFAULT '',
+        status TEXT DEFAULT 'open',
+        priority TEXT DEFAULT 'medium',
+        assignee TEXT DEFAULT '',
+        created_by TEXT,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
+
+    -- 项目需求变更历史（状态流转、改派、编辑）
+    CREATE TABLE IF NOT EXISTS project_requirement_history (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        project_id INTEGER,
+        requirement_id INTEGER,
+        actor TEXT,
+        action_type TEXT,
+        before_data TEXT DEFAULT '{}',
+        after_data TEXT DEFAULT '{}',
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
+
+    -- 项目成员变更历史（新增、移除、角色变更）
+    CREATE TABLE IF NOT EXISTS project_member_history (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        project_id INTEGER,
+        actor TEXT,
+        target_user TEXT,
+        action_type TEXT,
+        from_role TEXT DEFAULT '',
+        to_role TEXT DEFAULT '',
+        note TEXT DEFAULT '',
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP
     );
 
@@ -344,6 +385,9 @@ if (!hasColumn('posts', 'off_campus_location')) {
 if (!hasColumn('posts', 'requires_management')) {
     db.exec('ALTER TABLE posts ADD COLUMN requires_management INTEGER DEFAULT 0;');
 }
+if (!hasColumn('posts', 'post_labels')) {
+    db.exec("ALTER TABLE posts ADD COLUMN post_labels TEXT DEFAULT '[]';");
+}
 
 function getProjectByPostId(postId) {
     return db.prepare('SELECT * FROM team_projects WHERE post_id = ?').get(postId);
@@ -360,8 +404,12 @@ function ensureProjectForRecruitingPost(postRow) {
         project = getProjectByPostId(postRow.id);
     }
 
+    const before = db.prepare('SELECT role FROM team_members WHERE project_id = ? AND user_name = ?').get(project.id, postRow.author);
     db.prepare('INSERT OR IGNORE INTO team_members (project_id, user_name, role) VALUES (?, ?, ?)')
         .run(project.id, postRow.author, 'leader');
+    if (!before) {
+        logProjectMemberHistory(project.id, postRow.author, postRow.author, 'join', '', 'leader', '项目创建人自动入队');
+    }
 
     return project;
 }
@@ -376,11 +424,46 @@ function isProjectOwner(projectId, userName) {
     return !!row;
 }
 
+function normalizeProjectRole(role) {
+    const normalized = String(role || '').trim().toLowerCase();
+    if (normalized === 'leader') return 'leader';
+    if (normalized === 'core_member' || normalized === 'core') return 'core_member';
+    return 'member';
+}
+
+function isProjectLeader(projectId, userName) {
+    if (!userName) return false;
+    const row = db.prepare('SELECT role FROM team_members WHERE project_id = ? AND user_name = ?').get(projectId, userName);
+    if (!row) return false;
+    return row.role === 'leader' || isProjectOwner(projectId, userName);
+}
+
 function logProjectEvent(projectId, actor, eventType, title, detail, severity = 'medium') {
     db.prepare(`
         INSERT INTO project_events (project_id, actor, event_type, title, detail, severity)
         VALUES (?, ?, ?, ?, ?, ?)
     `).run(projectId, actor || '', eventType || 'note', title || '', detail || '', severity || 'medium');
+}
+
+function logProjectMemberHistory(projectId, actor, targetUser, actionType, fromRole, toRole, note = '') {
+    db.prepare(`
+        INSERT INTO project_member_history (project_id, actor, target_user, action_type, from_role, to_role, note)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+    `).run(projectId, actor || '', targetUser || '', actionType || '', fromRole || '', toRole || '', note || '');
+}
+
+function logRequirementHistory(projectId, requirementId, actor, actionType, beforeData, afterData) {
+    db.prepare(`
+        INSERT INTO project_requirement_history (project_id, requirement_id, actor, action_type, before_data, after_data)
+        VALUES (?, ?, ?, ?, ?, ?)
+    `).run(
+        projectId,
+        requirementId,
+        actor || '',
+        actionType || '',
+        JSON.stringify(beforeData || {}),
+        JSON.stringify(afterData || {})
+    );
 }
 
 function getObjectiveScore(projectId, userName) {
@@ -407,7 +490,12 @@ function getObjectiveScore(projectId, userName) {
 }
 
 function buildProjectScoreboard(projectId) {
-    const members = db.prepare('SELECT user_name, role FROM team_members WHERE project_id = ? ORDER BY role DESC, joined_at ASC').all(projectId);
+    const members = db.prepare(`
+        SELECT user_name, role
+        FROM team_members
+        WHERE project_id = ?
+        ORDER BY CASE role WHEN 'leader' THEN 1 WHEN 'core_member' THEN 2 ELSE 3 END, joined_at ASC
+    `).all(projectId);
     return members.map((member) => {
         const objective = getObjectiveScore(projectId, member.user_name);
         const subjectiveRow = db.prepare('SELECT AVG(score) AS avg_score, COUNT(*) AS score_count FROM peer_scores WHERE project_id = ? AND reviewee = ?').get(projectId, member.user_name);
@@ -438,6 +526,30 @@ function parseTagList(text) {
 
 function uniqueList(items) {
     return Array.from(new Set((items || []).filter(Boolean)));
+}
+
+function parsePostLabels(raw) {
+    if (Array.isArray(raw)) {
+        return uniqueList(raw.map((x) => String(x || '').trim()).filter(Boolean)).slice(0, 1);
+    }
+    if (typeof raw === 'string') {
+        const parsed = safeJsonParse(raw, null);
+        if (Array.isArray(parsed)) {
+            return uniqueList(parsed.map((x) => String(x || '').trim()).filter(Boolean)).slice(0, 1);
+        }
+        return uniqueList(parseTagList(raw).map((x) => String(x || '').trim()).filter(Boolean)).slice(0, 1);
+    }
+    return [];
+}
+
+function normalizePostType(type, labels, requiresManagement) {
+    const normalizedType = String(type || '').trim();
+    const primaryLabel = String((labels && labels[0]) || '').trim();
+    if (requiresManagement) return '寻人组队';
+    if (['寻人组队', '提供技能'].includes(normalizedType)) return normalizedType;
+    if (primaryLabel === '提供技能') return '提供技能';
+    if (primaryLabel === '寻人组队') return '寻人组队';
+    return '活动交流';
 }
 
 function tokenizeText(text) {
@@ -654,6 +766,91 @@ function computeFreshnessScore(createdAtText) {
     return 0.22;
 }
 
+function getUserActivitySummary(userName) {
+    const projectRows = db.prepare(`
+        SELECT tp.id, tp.title, tp.status, tp.created_at, tp.ended_at, tm.role
+        FROM team_projects tp
+        JOIN team_members tm ON tm.project_id = tp.id
+        WHERE tm.user_name = ?
+        ORDER BY tp.created_at DESC
+    `).all(userName);
+
+    const communityRows = db.prepare(`
+        SELECT id, title, post_type, created_at
+        FROM community_posts
+        WHERE author = ?
+        ORDER BY created_at DESC
+        LIMIT 80
+    `).all(userName);
+
+    const ongoing = [];
+    const history = [];
+    const terms = [];
+
+    projectRows.forEach((row) => {
+        const item = {
+            kind: '项目',
+            title: row.title || `项目 #${row.id}`,
+            role: row.role || 'member',
+            status: row.status || 'recruiting',
+            time: row.status === 'completed' ? (row.ended_at || row.created_at) : row.created_at
+        };
+        terms.push(item.title, item.role, item.status);
+        if (row.status !== 'completed') ongoing.push(item);
+        else history.push(item);
+    });
+
+    communityRows.forEach((row) => {
+        const createdTs = Date.parse(String(row.created_at || ''));
+        const isRecent = !Number.isNaN(createdTs) ? (Date.now() - createdTs) <= 60 * 24 * 60 * 60 * 1000 : false;
+        const item = {
+            kind: '社区',
+            title: row.title || `社区内容 #${row.id}`,
+            role: '作者',
+            status: isRecent ? 'active' : 'archived',
+            time: row.created_at
+        };
+        terms.push(item.title, row.post_type || '');
+        if (isRecent) ongoing.push(item);
+        else history.push(item);
+    });
+
+    return {
+        ongoing: ongoing.slice(0, 20),
+        history: history.slice(0, 30),
+        terms: uniqueList(tokenizeText(terms.join(' '))).slice(0, 80),
+        stats: {
+            ongoing_count: ongoing.length,
+            history_count: history.length,
+            total_count: ongoing.length + history.length
+        }
+    };
+}
+
+function computeActivityRelevanceScore(userActivitySummary, post) {
+    const activityTerms = userActivitySummary && Array.isArray(userActivitySummary.terms)
+        ? userActivitySummary.terms
+        : [];
+    const structured = safeJsonParse(post.structured_tags || '{}', {});
+    const labels = parsePostLabels(post.post_labels);
+    const textExtracted = extractTagsFromText(`${post.title || ''} ${post.content || ''}`);
+    const postTerms = uniqueList([
+        ...(labels || []),
+        ...((structured.skills || []).map(String)),
+        ...((structured.interests || []).map(String)),
+        ...(textExtracted.skills || []),
+        ...(textExtracted.interests || [])
+    ].map((x) => String(x || '').trim()).filter(Boolean));
+
+    const termOverlap = overlapScore(activityTerms, postTerms);
+    const stats = userActivitySummary && userActivitySummary.stats ? userActivitySummary.stats : {};
+    const activityIntensity = Math.min(
+        1,
+        ((Number(stats.ongoing_count || 0) * 1.2) + (Number(stats.history_count || 0) * 0.6)) / 14
+    );
+    return Number((termOverlap * 0.75 + activityIntensity * 0.25).toFixed(4));
+}
+
 function buildRecommendationContext(currentUser) {
     const user = db.prepare('SELECT * FROM users WHERE name = ?').get(currentUser);
     if (!user) {
@@ -670,6 +867,7 @@ function buildRecommendationContext(currentUser) {
 
     upsertUserPreferenceProfile(currentUser);
     const userPreferenceProfile = getUserPreferenceProfile(currentUser);
+    const userActivitySummary = getUserActivitySummary(currentUser);
 
     const allCandidates = db.prepare('SELECT * FROM posts WHERE author != ? ORDER BY created_at DESC LIMIT 300').all(currentUser);
 
@@ -696,6 +894,7 @@ function buildRecommendationContext(currentUser) {
         const successRateScore = Number(userSoft.success_rate || 0);
         const behaviorScore = computeBehaviorPreferenceScore(userPreferenceProfile, post);
         const freshnessScore = computeFreshnessScore(post.created_at);
+        const activityScore = computeActivityRelevanceScore(userActivitySummary, post);
 
         const finalScore = (
             skillScore * RECOMMENDATION_WEIGHTS.skill +
@@ -704,7 +903,8 @@ function buildRecommendationContext(currentUser) {
             semanticScore * RECOMMENDATION_WEIGHTS.semantic +
             successRateScore * RECOMMENDATION_WEIGHTS.success +
             behaviorScore * RECOMMENDATION_WEIGHTS.behavior +
-            freshnessScore * RECOMMENDATION_WEIGHTS.freshness
+            freshnessScore * RECOMMENDATION_WEIGHTS.freshness +
+            activityScore * RECOMMENDATION_WEIGHTS.activity
         );
 
         const reasons = [];
@@ -718,6 +918,7 @@ function buildRecommendationContext(currentUser) {
         if (interestScore > 0) reasons.push(`兴趣重合度 ${(interestScore * 100).toFixed(0)}%`);
         if (semanticScore > 0) reasons.push(`语义匹配度 ${(semanticScore * 100).toFixed(0)}%`);
         if (behaviorScore >= 0.55) reasons.push('符合你的历史申请偏好');
+        if (activityScore >= 0.5) reasons.push('与你近期活动经历相近');
         if (freshnessScore >= 0.8) reasons.push('发布较新，沟通响应更快');
 
         return {
@@ -745,6 +946,7 @@ async function rerankWithAI(user, candidates, limit) {
         title: String(item.title || '').slice(0, 42),
         content: String(item.content || '').replace(/\s+/g, ' ').slice(0, 80),
         type: item.type,
+        labels: parsePostLabels(item.post_labels),
         campus: item.campus,
         recommendation_score: item.recommendation_score
     }));
@@ -873,6 +1075,7 @@ function computeUserSuccessRate(userName) {
 function upsertUserFeatureStore(userRow) {
     if (!userRow || !userRow.name) return;
 
+    const activitySummary = getUserActivitySummary(userRow.name);
     const extraText = [userRow.bio || '', userRow.skills || '', userRow.interests || ''].join(' ');
     const extracted = extractTagsFromText(extraText);
     const skillTags = uniqueList(extracted.skills);
@@ -890,7 +1093,9 @@ function upsertUserFeatureStore(userRow) {
         skills: skillTags,
         interests: interestTags,
         mbti: mbtiFromText,
-        success_rate: successRate
+        success_rate: successRate,
+        activity_terms: activitySummary.terms || [],
+        activity_stats: activitySummary.stats || {}
     };
 
     const featureText = [
@@ -900,6 +1105,7 @@ function upsertUserFeatureStore(userRow) {
         softTags.mbti,
         skillTags.join(' '),
         interestTags.join(' '),
+        (activitySummary.terms || []).join(' '),
         userRow.bio || ''
     ].join(' ');
 
@@ -924,15 +1130,18 @@ function upsertUserFeatureStore(userRow) {
 
 function buildPostFeatures(postInput) {
     const text = [postInput.title || '', postInput.content || ''].join(' ');
+    const labels = parsePostLabels(postInput.labels);
     const extracted = extractTagsFromText(text);
     const structuredTags = {
         skills: extracted.skills,
         interests: extracted.interests,
+        labels,
         campus: postInput.campus || '',
         accept_cross_campus: postInput.accept_cross_campus ? 1 : 0
     };
     const featureVector = buildHashedVector([
         text,
+        labels.join(' '),
         structuredTags.skills.join(' '),
         structuredTags.interests.join(' '),
         structuredTags.campus,
@@ -951,6 +1160,38 @@ function overlapScore(listA, listB) {
         if (setB.has(item)) hits += 1;
     });
     return hits / Math.max(setA.size, setB.size);
+}
+
+function computePostSearchScore(post, queryText) {
+    const query = String(queryText || '').trim();
+    if (!query) return 0;
+    const queryLower = query.toLowerCase();
+    const queryTokens = tokenizeText(queryLower).filter((token) => token.length >= 2);
+    const queryTags = extractTagsFromText(query);
+    const queryVec = buildHashedVector(query);
+
+    const labels = parsePostLabels(post.post_labels);
+    const structured = safeJsonParse(post.structured_tags || '{}', {});
+    const postText = `${post.title || ''} ${post.content || ''} ${labels.join(' ')} ${(structured.skills || []).join(' ')} ${(structured.interests || []).join(' ')}`;
+    const postLower = postText.toLowerCase();
+    const postVec = safeJsonParse(post.feature_vector || '[]', []);
+    const fallbackVec = Array.isArray(postVec) && postVec.length ? postVec : buildHashedVector(postText);
+
+    const semanticScore = cosineSimilarity(queryVec, fallbackVec);
+    const exactScore = postLower.includes(queryLower) ? 1 : 0;
+    const tokenHit = queryTokens.length
+        ? queryTokens.filter((token) => postLower.includes(token)).length / queryTokens.length
+        : 0;
+    const skillOverlap = overlapScore(queryTags.skills || [], structured.skills || []);
+    const interestOverlap = overlapScore(queryTags.interests || [], structured.interests || []);
+    const tagOverlap = (skillOverlap + interestOverlap) / 2;
+
+    return Number((
+        semanticScore * 0.45 +
+        exactScore * 0.25 +
+        tokenHit * 0.2 +
+        tagOverlap * 0.1
+    ).toFixed(6));
 }
 
 function mbtiCompatibilityScore(userMbti, postHintMbti) {
@@ -1015,6 +1256,8 @@ app.post('/api/posts', (req, res) => {
         title,
         content,
         type,
+        labels,
+        custom_label,
         location,
         compensation,
         accept_cross_campus,
@@ -1026,28 +1269,46 @@ app.post('/api/posts', (req, res) => {
     const normalizedCampus = (authorRow && campusValid(authorRow.campus)) ? authorRow.campus : '';
     const normalizedCrossCampus = accept_cross_campus ? 1 : 0;
     const normalizedOffCampusLocation = String(off_campus_location || '').trim();
-    const normalizedRequiresManagement = (type === '寻人组队' && !!requires_management) ? 1 : 0;
+    const normalizedLabels = parsePostLabels(labels);
+    const presetLabels = new Set(['寻人组队', '提供技能', '自定义']);
+    const selectedLabel = String(normalizedLabels[0] || '').trim();
+    const customLabelText = String(custom_label || '').trim();
+    let finalLabel = selectedLabel;
+    if (!selectedLabel) return res.status(400).json({ success: false, message: '请选择一个标签' });
+    if (!presetLabels.has(selectedLabel)) {
+        return res.status(400).json({ success: false, message: '标签仅支持：寻人组队 / 提供技能 / 自定义' });
+    }
+    if (selectedLabel === '自定义') {
+        if (!customLabelText) return res.status(400).json({ success: false, message: '请选择自定义标签时必须填写标签内容' });
+        if (customLabelText.length > 12) return res.status(400).json({ success: false, message: '自定义标签最多 12 个字符' });
+        finalLabel = customLabelText;
+    }
+    const normalizedLabelList = finalLabel ? [finalLabel] : [];
+    const normalizedRequiresManagement = !!requires_management ? 1 : 0;
+    const normalizedType = normalizePostType(type, normalizedLabelList, normalizedRequiresManagement === 1);
 
     const { structuredTags, featureVector } = buildPostFeatures({
         title,
         content,
+        labels: normalizedLabelList,
         campus: normalizedCampus,
         accept_cross_campus: normalizedCrossCampus
     });
 
-    console.log('📝 收到发布请求:', { author, title, type, campus: normalizedCampus, accept_cross_campus: normalizedCrossCampus });
+    console.log('📝 收到发布请求:', { author, title, type: normalizedType, labels: normalizedLabelList, campus: normalizedCampus, accept_cross_campus: normalizedCrossCampus });
     try {
         const stmt = db.prepare(`
             INSERT INTO posts (
-                author, title, content, type, location, compensation,
+                author, title, content, type, post_labels, location, compensation,
                 collaboration_mode, campus, expected_hours, structured_tags, feature_vector, off_campus_location, accept_cross_campus, requires_management
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         `);
         const result = stmt.run(
             author,
             title,
             content,
-            type,
+            normalizedType,
+            JSON.stringify(normalizedLabelList),
             location || '',
             compensation || '',
             'offline',
@@ -1060,7 +1321,7 @@ app.post('/api/posts', (req, res) => {
             normalizedRequiresManagement
         );
 
-        if (type === '寻人组队' && normalizedRequiresManagement === 1) {
+        if (normalizedType === '寻人组队' && normalizedRequiresManagement === 1) {
             const postRow = db.prepare('SELECT * FROM posts WHERE id = ?').get(result.lastInsertRowid);
             ensureProjectForRecruitingPost(postRow);
         }
@@ -1080,6 +1341,9 @@ app.get('/api/posts', (req, res) => {
     const currentUser = req.query.user; // 获取当前是谁在看大厅
     try {
         const posts = db.prepare("SELECT * FROM posts ORDER BY created_at DESC").all();
+        posts.forEach((post) => {
+            post.post_labels = parsePostLabels(post.post_labels);
+        });
         
         // 🔮 如果传了当前用户名，去查一下他都报了哪些名
         if (currentUser) {
@@ -1112,6 +1376,36 @@ app.get('/api/posts', (req, res) => {
         res.json({ success: true, data: posts });
     } catch (err) {
         res.status(500).json({ success: false, message: '获取帖子失败' });
+    }
+});
+
+app.get('/api/posts/search-ai', (req, res) => {
+    const query = String(req.query.q || '').trim();
+    const limit = Math.min(200, Math.max(1, Number(req.query.limit || 80)));
+
+    if (!query) {
+        return res.json({ success: true, ai_assisted: true, data: [] });
+    }
+
+    try {
+        const posts = db.prepare('SELECT id, title, content, post_labels, structured_tags, feature_vector, created_at FROM posts').all();
+        const ranked = posts
+            .map((post) => ({
+                id: post.id,
+                score: computePostSearchScore(post, query),
+                created_at: post.created_at
+            }))
+            .filter((item) => item.score >= 0.08)
+            .sort((a, b) => {
+                if (b.score !== a.score) return b.score - a.score;
+                return new Date(b.created_at || 0) - new Date(a.created_at || 0);
+            })
+            .slice(0, limit)
+            .map((item) => ({ id: item.id, score: item.score }));
+
+        res.json({ success: true, ai_assisted: true, data: ranked });
+    } catch (err) {
+        res.status(500).json({ success: false, message: '智能检索失败' });
     }
 });
 
@@ -1395,7 +1689,17 @@ app.get('/api/profile/:username', (req, res) => {
             avgStar = Number((avgFinalScore / 20).toFixed(2));
         }
 
-        res.json({ success: true, data: user, reviews: reviews, avgFinalScore, avgStar, featureStore });
+        const activities = getUserActivitySummary(username);
+
+        res.json({
+            success: true,
+            data: user,
+            reviews: reviews,
+            avgFinalScore,
+            avgStar,
+            featureStore,
+            activities
+        });
     } catch (err) { res.status(500).json({ success: false }); }
 });
 
@@ -1447,8 +1751,13 @@ app.post('/api/applications/:id/decision', (req, res) => {
                 return res.status(400).json({ success: false, message: '当前项目非招募阶段，不能继续审批' });
             }
             if (decision === 'accepted') {
+                const before = db.prepare('SELECT role FROM team_members WHERE project_id = ? AND user_name = ?').get(project.id, appRow.applicant_name);
                 db.prepare('INSERT OR IGNORE INTO team_members (project_id, user_name, role) VALUES (?, ?, ?)')
                     .run(project.id, appRow.applicant_name, 'member');
+                if (!before) {
+                    logProjectMemberHistory(project.id, owner, appRow.applicant_name, 'join', '', 'member', '招募审批通过入队');
+                    logProjectEvent(project.id, owner, 'member', '成员加入项目', `${appRow.applicant_name} 通过申请加入项目`, 'low');
+                }
             }
         }
 
@@ -1525,7 +1834,7 @@ app.get('/api/projects-preview', (req, res) => {
                 member_count: memberCount,
                 pending_milestones: pendingMilestones,
                 recent_checkin: recentCheckin || null,
-                can_manage: project.owner === currentUser
+                can_manage: isProjectLeader(project.id, currentUser)
             };
         });
 
@@ -1547,9 +1856,17 @@ app.get('/api/projects/:id/detail', (req, res) => {
             return res.status(403).json({ success: false, message: '仅项目成员可查看协作详情' });
         }
 
-        const members = db.prepare('SELECT user_name, role, joined_at FROM team_members WHERE project_id = ? ORDER BY role DESC, joined_at ASC').all(projectId);
+        const members = db.prepare(`
+            SELECT user_name, role, joined_at
+            FROM team_members
+            WHERE project_id = ?
+            ORDER BY CASE role WHEN 'leader' THEN 1 WHEN 'core_member' THEN 2 ELSE 3 END, joined_at ASC
+        `).all(projectId);
         const milestones = db.prepare('SELECT * FROM milestones WHERE project_id = ? ORDER BY created_at ASC').all(projectId);
         const checkins = db.prepare('SELECT * FROM checkins WHERE project_id = ? ORDER BY created_at DESC LIMIT 50').all(projectId);
+        const requirements = db.prepare('SELECT * FROM project_requirements WHERE project_id = ? ORDER BY created_at DESC, id DESC').all(projectId);
+        const memberChanges = db.prepare('SELECT * FROM project_member_history WHERE project_id = ? ORDER BY created_at DESC, id DESC LIMIT 40').all(projectId);
+        const requirementChanges = db.prepare('SELECT * FROM project_requirement_history WHERE project_id = ? ORDER BY created_at DESC, id DESC LIMIT 60').all(projectId);
         const scoreboard = buildProjectScoreboard(projectId);
 
         res.json({
@@ -1559,13 +1876,268 @@ app.get('/api/projects/:id/detail', (req, res) => {
                 members,
                 milestones,
                 checkins,
+                requirements,
+                member_changes: memberChanges,
+                requirement_changes: requirementChanges,
                 scoreboard,
-                can_manage: isProjectOwner(projectId, currentUser),
+                can_manage: isProjectLeader(projectId, currentUser),
                 is_member: true
             }
         });
     } catch (err) {
         res.status(500).json({ success: false, message: '获取项目详情失败' });
+    }
+});
+
+// 6.5 项目需求列表
+app.get('/api/projects/:id/requirements', (req, res) => {
+    const projectId = req.params.id;
+    const currentUser = req.query.user;
+
+    if (!isProjectMember(projectId, currentUser)) {
+        return res.status(403).json({ success: false, message: '仅项目成员可查看需求' });
+    }
+
+    try {
+        const rows = db.prepare('SELECT * FROM project_requirements WHERE project_id = ? ORDER BY created_at DESC, id DESC').all(projectId);
+        res.json({ success: true, data: rows, can_manage: isProjectLeader(projectId, currentUser) });
+    } catch (err) {
+        res.status(500).json({ success: false, message: '获取项目需求失败' });
+    }
+});
+
+// 6.6 新增项目需求
+app.post('/api/projects/:id/requirements', (req, res) => {
+    const projectId = req.params.id;
+    const { actor, title, description, priority, assignee } = req.body;
+    const normalizedTitle = String(title || '').trim();
+    const normalizedDesc = String(description || '').trim();
+    const normalizedPriority = ['low', 'medium', 'high'].includes(priority) ? priority : 'medium';
+    const normalizedAssignee = String(assignee || '').trim();
+
+    if (!normalizedTitle) return res.status(400).json({ success: false, message: '需求标题不能为空' });
+    if (!isProjectMember(projectId, actor)) return res.status(403).json({ success: false, message: '仅项目成员可发布需求' });
+    if (normalizedAssignee && !isProjectMember(projectId, normalizedAssignee)) {
+        return res.status(400).json({ success: false, message: '被指派成员不在项目内' });
+    }
+
+    try {
+        const result = db.prepare(`
+            INSERT INTO project_requirements (project_id, title, description, status, priority, assignee, created_by)
+            VALUES (?, ?, ?, 'open', ?, ?, ?)
+        `).run(projectId, normalizedTitle, normalizedDesc, normalizedPriority, normalizedAssignee, actor);
+        const requirement = db.prepare('SELECT * FROM project_requirements WHERE id = ?').get(result.lastInsertRowid);
+        logRequirementHistory(projectId, requirement.id, actor, 'create', {}, requirement);
+        logProjectEvent(projectId, actor, 'requirement', '新增项目需求', `${normalizedTitle}${normalizedAssignee ? `（指派 ${normalizedAssignee}）` : ''}`, 'low');
+        res.json({ success: true, message: '项目需求已发布', data: requirement });
+    } catch (err) {
+        res.status(500).json({ success: false, message: '发布项目需求失败' });
+    }
+});
+
+// 6.7 更新项目需求（状态流转、改派、编辑）
+app.put('/api/projects/:id/requirements/:rid', (req, res) => {
+    const projectId = req.params.id;
+    const requirementId = req.params.rid;
+    const { actor, status, priority, assignee, title, description } = req.body;
+    const targetStatus = status ? String(status).trim() : '';
+    const targetPriority = priority ? String(priority).trim() : '';
+    const targetAssignee = assignee === undefined ? undefined : String(assignee || '').trim();
+    const targetTitle = title === undefined ? undefined : String(title || '').trim();
+    const targetDescription = description === undefined ? undefined : String(description || '').trim();
+    const allowedStatus = ['open', 'in_progress', 'blocked', 'done'];
+    const allowedPriority = ['low', 'medium', 'high'];
+
+    if (!isProjectMember(projectId, actor)) return res.status(403).json({ success: false, message: '仅项目成员可更新需求' });
+
+    try {
+        const current = db.prepare('SELECT * FROM project_requirements WHERE id = ? AND project_id = ?').get(requirementId, projectId);
+        if (!current) return res.status(404).json({ success: false, message: '项目需求不存在' });
+
+        const canManage = isProjectLeader(projectId, actor);
+        const canUpdateStatus = canManage || current.assignee === actor || current.created_by === actor;
+        if (!canUpdateStatus) return res.status(403).json({ success: false, message: '你无权更新该需求' });
+
+        let nextStatus = current.status;
+        let nextPriority = current.priority || 'medium';
+        let nextAssignee = current.assignee || '';
+        let nextTitle = current.title;
+        let nextDescription = current.description || '';
+
+        if (targetStatus) {
+            if (!allowedStatus.includes(targetStatus)) return res.status(400).json({ success: false, message: '需求状态不合法' });
+            nextStatus = targetStatus;
+        }
+        if (targetPriority) {
+            if (!allowedPriority.includes(targetPriority)) return res.status(400).json({ success: false, message: '需求优先级不合法' });
+            nextPriority = targetPriority;
+        }
+
+        if (targetAssignee !== undefined) {
+            if (!canManage) return res.status(403).json({ success: false, message: '仅队长可改派需求' });
+            if (targetAssignee && !isProjectMember(projectId, targetAssignee)) {
+                return res.status(400).json({ success: false, message: '新指派成员不在项目内' });
+            }
+            nextAssignee = targetAssignee;
+        }
+        if (targetTitle !== undefined) {
+            if (!canManage) return res.status(403).json({ success: false, message: '仅队长可编辑需求标题' });
+            if (!targetTitle) return res.status(400).json({ success: false, message: '需求标题不能为空' });
+            nextTitle = targetTitle;
+        }
+        if (targetDescription !== undefined) {
+            if (!canManage) return res.status(403).json({ success: false, message: '仅队长可编辑需求说明' });
+            nextDescription = targetDescription;
+        }
+
+        db.prepare(`
+            UPDATE project_requirements
+            SET title = ?, description = ?, status = ?, priority = ?, assignee = ?, updated_at = CURRENT_TIMESTAMP
+            WHERE id = ? AND project_id = ?
+        `).run(nextTitle, nextDescription, nextStatus, nextPriority, nextAssignee, requirementId, projectId);
+
+        const updated = db.prepare('SELECT * FROM project_requirements WHERE id = ?').get(requirementId);
+        logRequirementHistory(projectId, Number(requirementId), actor, 'update', current, updated);
+        logProjectEvent(
+            projectId,
+            actor,
+            'requirement',
+            '更新项目需求',
+            `${updated.title} | ${current.status} -> ${updated.status}${current.assignee !== updated.assignee ? ` | 改派 ${current.assignee || '未分配'} -> ${updated.assignee || '未分配'}` : ''}`,
+            updated.status === 'blocked' ? 'high' : 'low'
+        );
+
+        res.json({ success: true, message: '项目需求已更新', data: updated });
+    } catch (err) {
+        res.status(500).json({ success: false, message: '更新项目需求失败' });
+    }
+});
+
+// 6.8 成员调整：新增成员
+app.get('/api/projects/:id/members', (req, res) => {
+    const projectId = req.params.id;
+    const currentUser = req.query.user;
+    if (!isProjectMember(projectId, currentUser)) {
+        return res.status(403).json({ success: false, message: '仅项目成员可查看成员信息' });
+    }
+
+    try {
+        const members = db.prepare(`
+            SELECT user_name, role, joined_at
+            FROM team_members
+            WHERE project_id = ?
+            ORDER BY CASE role WHEN 'leader' THEN 1 WHEN 'core_member' THEN 2 ELSE 3 END, joined_at ASC
+        `).all(projectId);
+        const history = db.prepare('SELECT * FROM project_member_history WHERE project_id = ? ORDER BY created_at DESC, id DESC LIMIT 80').all(projectId);
+        res.json({ success: true, data: members, history, can_manage: isProjectLeader(projectId, currentUser) });
+    } catch (err) {
+        res.status(500).json({ success: false, message: '获取成员信息失败' });
+    }
+});
+
+// 6.8 成员调整：新增成员
+app.post('/api/projects/:id/members', (req, res) => {
+    const projectId = req.params.id;
+    const { actor, user_name, role } = req.body;
+    const targetUser = String(user_name || '').trim();
+    const targetRole = normalizeProjectRole(role);
+    if (!targetUser) return res.status(400).json({ success: false, message: '目标成员不能为空' });
+    if (!isProjectLeader(projectId, actor)) return res.status(403).json({ success: false, message: '仅队长可新增成员' });
+
+    try {
+        const existed = db.prepare('SELECT role FROM team_members WHERE project_id = ? AND user_name = ?').get(projectId, targetUser);
+        if (existed) return res.status(400).json({ success: false, message: '该成员已在项目中' });
+
+        db.prepare('INSERT INTO team_members (project_id, user_name, role) VALUES (?, ?, ?)').run(projectId, targetUser, targetRole);
+        if (targetRole === 'leader') {
+            db.prepare("UPDATE team_members SET role = 'core_member' WHERE project_id = ? AND user_name != ? AND role = 'leader'").run(projectId, targetUser);
+            db.prepare('UPDATE team_projects SET owner = ? WHERE id = ?').run(targetUser, projectId);
+        }
+
+        logProjectMemberHistory(projectId, actor, targetUser, 'join', '', targetRole, '中途新增成员');
+        logProjectEvent(projectId, actor, 'member', '新增项目成员', `${targetUser} 加入项目（${targetRole}）`, 'medium');
+        res.json({ success: true, message: '成员已加入项目' });
+    } catch (err) {
+        res.status(500).json({ success: false, message: '新增成员失败' });
+    }
+});
+
+// 6.9 成员调整：角色变更
+app.put('/api/projects/:id/members/:memberName', (req, res) => {
+    const projectId = req.params.id;
+    const targetUser = decodeURIComponent(req.params.memberName || '');
+    const { actor, role } = req.body;
+    const targetRole = normalizeProjectRole(role);
+    if (!targetUser) return res.status(400).json({ success: false, message: '目标成员不能为空' });
+    if (!isProjectLeader(projectId, actor)) return res.status(403).json({ success: false, message: '仅队长可调整成员角色' });
+
+    try {
+        const member = db.prepare('SELECT * FROM team_members WHERE project_id = ? AND user_name = ?').get(projectId, targetUser);
+        if (!member) return res.status(404).json({ success: false, message: '成员不在项目内' });
+        if (member.role === targetRole) return res.json({ success: true, message: '角色未发生变化' });
+        const project = db.prepare('SELECT owner FROM team_projects WHERE id = ?').get(projectId);
+        if (member.role === 'leader' && targetRole !== 'leader' && project && project.owner === targetUser) {
+            return res.status(400).json({ success: false, message: '请先将其他成员设为队长，再调整当前队长角色' });
+        }
+
+        if (targetRole === 'leader') {
+            db.prepare("UPDATE team_members SET role = 'core_member' WHERE project_id = ? AND role = 'leader' AND user_name != ?").run(projectId, targetUser);
+            db.prepare('UPDATE team_projects SET owner = ? WHERE id = ?').run(targetUser, projectId);
+        }
+        db.prepare('UPDATE team_members SET role = ? WHERE project_id = ? AND user_name = ?').run(targetRole, projectId, targetUser);
+
+        logProjectMemberHistory(projectId, actor, targetUser, 'role_change', member.role || '', targetRole, '项目角色调整');
+        logProjectEvent(projectId, actor, 'member', '成员角色调整', `${targetUser}: ${member.role || 'member'} -> ${targetRole}`, 'medium');
+        res.json({ success: true, message: '成员角色已更新' });
+    } catch (err) {
+        res.status(500).json({ success: false, message: '角色更新失败' });
+    }
+});
+
+// 6.10 成员调整：成员退出/移除
+app.delete('/api/projects/:id/members/:memberName', (req, res) => {
+    const projectId = req.params.id;
+    const targetUser = decodeURIComponent(req.params.memberName || '');
+    const { actor, reassign_to } = req.body;
+    const reassignTo = String(reassign_to || '').trim();
+    if (!targetUser) return res.status(400).json({ success: false, message: '目标成员不能为空' });
+
+    try {
+        const member = db.prepare('SELECT * FROM team_members WHERE project_id = ? AND user_name = ?').get(projectId, targetUser);
+        if (!member) return res.status(404).json({ success: false, message: '成员不在项目内' });
+
+        const selfExit = actor === targetUser;
+        if (!selfExit && !isProjectLeader(projectId, actor)) {
+            return res.status(403).json({ success: false, message: '仅队长可移除成员' });
+        }
+        if (selfExit && member.role === 'leader') {
+            return res.status(400).json({ success: false, message: '队长不能直接退出，请先转移队长角色' });
+        }
+        if (!selfExit && member.role === 'leader') {
+            return res.status(400).json({ success: false, message: '请先调整队长角色后再移除' });
+        }
+
+        if (reassignTo && !isProjectMember(projectId, reassignTo)) {
+            return res.status(400).json({ success: false, message: '改派目标不在项目内' });
+        }
+
+        const assignmentCountRow = db.prepare('SELECT COUNT(*) AS count FROM project_requirements WHERE project_id = ? AND assignee = ? AND status != ?').get(projectId, targetUser, 'done');
+        const assignmentCount = assignmentCountRow ? assignmentCountRow.count || 0 : 0;
+        if (assignmentCount > 0 && !reassignTo) {
+            db.prepare('UPDATE project_requirements SET assignee = ?, updated_at = CURRENT_TIMESTAMP WHERE project_id = ? AND assignee = ? AND status != ?')
+                .run('', projectId, targetUser, 'done');
+        } else if (assignmentCount > 0 && reassignTo) {
+            db.prepare('UPDATE project_requirements SET assignee = ?, updated_at = CURRENT_TIMESTAMP WHERE project_id = ? AND assignee = ? AND status != ?')
+                .run(reassignTo, projectId, targetUser, 'done');
+            logProjectEvent(projectId, actor, 'requirement', '需求批量改派', `${targetUser} 的 ${assignmentCount} 条需求改派给 ${reassignTo}`, 'medium');
+        }
+
+        db.prepare('DELETE FROM team_members WHERE project_id = ? AND user_name = ?').run(projectId, targetUser);
+        logProjectMemberHistory(projectId, actor, targetUser, selfExit ? 'leave' : 'remove', member.role || '', '', reassignTo ? `需求改派到 ${reassignTo}` : '需求取消指派');
+        logProjectEvent(projectId, actor, 'member', selfExit ? '成员退出项目' : '成员被移出项目', `${targetUser} 已离开项目`, 'medium');
+        res.json({ success: true, message: selfExit ? '你已退出项目' : '成员已移出项目' });
+    } catch (err) {
+        res.status(500).json({ success: false, message: '移除成员失败' });
     }
 });
 
@@ -1579,7 +2151,7 @@ app.put('/api/projects/:id/status', (req, res) => {
     try {
         const project = db.prepare('SELECT * FROM team_projects WHERE id = ?').get(projectId);
         if (!project) return res.status(404).json({ success: false, message: '项目不存在' });
-        if (project.owner !== actor) return res.status(403).json({ success: false, message: '仅队长可修改项目状态' });
+        if (!isProjectLeader(projectId, actor)) return res.status(403).json({ success: false, message: '仅队长可修改项目状态' });
 
         if (status === 'executing' && !project.started_at) {
             db.prepare('UPDATE team_projects SET status = ?, started_at = CURRENT_TIMESTAMP WHERE id = ?').run(status, projectId);
@@ -1608,7 +2180,7 @@ app.post('/api/projects/:id/milestones', (req, res) => {
     if (!title || !title.trim()) return res.status(400).json({ success: false, message: '里程碑标题不能为空' });
 
     try {
-        if (!isProjectOwner(projectId, actor)) return res.status(403).json({ success: false, message: '仅队长可新增里程碑' });
+        if (!isProjectLeader(projectId, actor)) return res.status(403).json({ success: false, message: '仅队长可新增里程碑' });
         db.prepare('INSERT INTO milestones (project_id, title, due_date, created_by) VALUES (?, ?, ?, ?)')
             .run(projectId, title.trim(), due_date || '', actor);
         logProjectEvent(projectId, actor, 'milestone', '新增里程碑', `${title.trim()}${due_date ? `（截止 ${due_date}）` : ''}`, 'low');
@@ -1628,7 +2200,7 @@ app.put('/api/projects/:id/milestones/:mid', (req, res) => {
     }
 
     try {
-        if (!isProjectOwner(projectId, actor)) return res.status(403).json({ success: false, message: '仅队长可更新里程碑状态' });
+        if (!isProjectLeader(projectId, actor)) return res.status(403).json({ success: false, message: '仅队长可更新里程碑状态' });
         const milestone = db.prepare('SELECT * FROM milestones WHERE id = ? AND project_id = ?').get(milestoneId, projectId);
         if (!milestone) return res.status(404).json({ success: false, message: '里程碑不存在' });
 
@@ -1679,7 +2251,7 @@ app.delete('/api/projects/:id/checkins/:checkinId', (req, res) => {
         const checkin = db.prepare('SELECT * FROM checkins WHERE id = ? AND project_id = ?').get(checkinId, projectId);
         if (!checkin) return res.status(404).json({ success: false, message: '打卡记录不存在' });
 
-        const canDelete = isProjectOwner(projectId, actor) || checkin.user_name === actor;
+        const canDelete = isProjectLeader(projectId, actor) || checkin.user_name === actor;
         if (!canDelete) return res.status(403).json({ success: false, message: '仅发布者/队长或记录本人可删除打卡' });
 
         db.prepare('DELETE FROM checkins WHERE id = ?').run(checkinId);
@@ -1765,7 +2337,7 @@ app.get('/api/projects/:id/feedback', (req, res) => {
 
     try {
         const rows = db.prepare('SELECT * FROM project_feedback WHERE project_id = ? ORDER BY created_at DESC').all(projectId);
-        res.json({ success: true, data: rows, can_manage: isProjectOwner(projectId, currentUser) });
+        res.json({ success: true, data: rows, can_manage: isProjectLeader(projectId, currentUser) });
     } catch (err) {
         res.status(500).json({ success: false, message: '获取反馈失败' });
     }
@@ -1778,7 +2350,7 @@ app.put('/api/projects/:id/feedback/:fid', (req, res) => {
     const { actor, status, resolution_note } = req.body;
 
     if (!['open', 'resolved'].includes(status)) return res.status(400).json({ success: false, message: '反馈状态不合法' });
-    if (!isProjectOwner(projectId, actor)) return res.status(403).json({ success: false, message: '仅发布者/队长可处理反馈' });
+    if (!isProjectLeader(projectId, actor)) return res.status(403).json({ success: false, message: '仅发布者/队长可处理反馈' });
 
     try {
         const row = db.prepare('SELECT * FROM project_feedback WHERE id = ? AND project_id = ?').get(feedbackId, projectId);
@@ -1820,7 +2392,7 @@ app.delete('/api/projects/:id/feedback/:fid', (req, res) => {
         const row = db.prepare('SELECT * FROM project_feedback WHERE id = ? AND project_id = ?').get(feedbackId, projectId);
         if (!row) return res.status(404).json({ success: false, message: '反馈记录不存在' });
 
-        const canDelete = row.author === actor || isProjectOwner(projectId, actor);
+        const canDelete = row.author === actor || isProjectLeader(projectId, actor);
         if (!canDelete) {
             return res.status(403).json({ success: false, message: '仅反馈发起者或发布者/队长可删除' });
         }
@@ -1867,7 +2439,7 @@ app.get('/api/projects/:id/overview', (req, res) => {
                 recent_checkins: recentCheckins,
                 recent_events: recentEvents,
                 open_feedback: openFeedback,
-                can_manage: isProjectOwner(projectId, currentUser)
+                can_manage: isProjectLeader(projectId, currentUser)
             }
         });
     } catch (err) {

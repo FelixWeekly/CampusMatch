@@ -10,6 +10,8 @@ window.onload = function() {
     document.getElementById('welcome-text').innerText = `👋 欢迎, ${currentUser}!`;
     updateManagementEntryVisibility(false);
     renderSimpleHomeFlow(0);
+    renderLabelPickers();
+    updatePlaceholders();
 
     fetchPosts();
     loadRecommendations();
@@ -26,6 +28,7 @@ window.onload = function() {
             }
         });
     }
+    syncCustomLabelInputWidth();
 
     updateQuickNavActive();
 };
@@ -38,7 +41,8 @@ function logout() {
 async function createPost() {
     const title = document.getElementById('post-title').value;
     const content = document.getElementById('post-content').value;
-    const type = document.getElementById('post-type').value;
+    const labels = selectedPostLabel ? [selectedPostLabel] : [];
+    const customLabel = (document.getElementById('post-custom-label')?.value || '').trim();
     const acceptCrossCampus = document.getElementById('post-cross-campus').checked;
     const requiresManagement = document.getElementById('post-requires-management')?.checked || false;
     const author = localStorage.getItem('currentUser');
@@ -47,18 +51,29 @@ async function createPost() {
         alert('标题和内容不能为空！');
         return;
     }
+    if (!selectedPostLabel) {
+        alert('请选择一个标签');
+        return;
+    }
+    if (selectedPostLabel === '自定义') {
+        if (!customLabel) {
+            alert('请输入自定义标签');
+            return;
+        }
+        if (customLabel.length > 12) {
+            alert('自定义标签最多 12 个字符');
+            return;
+        }
+    }
 
     let hasCompensation = false;
     let amount = '';
     
-    if (type === '寻人组队') {
-        hasCompensation = document.getElementById('post-compensation').checked;
-        amount = document.getElementById('post-amount').value.trim();
-        
-        if (hasCompensation && amount === '') {
-            alert('请输入报酬金额！');
-            return;
-        }
+    hasCompensation = document.getElementById('post-compensation').checked;
+    amount = document.getElementById('post-amount').value.trim();
+    if (hasCompensation && amount === '') {
+        alert('请输入报酬金额！');
+        return;
     }
     try {
         const response = await fetch('http://localhost:3000/api/posts', {
@@ -68,11 +83,12 @@ async function createPost() {
                 author, 
                 title, 
                 content, 
-                type, 
+                labels,
+                custom_label: customLabel,
                 location: '', 
-                compensation: (type === '寻人组队' && hasCompensation) ? amount : '',
+                compensation: hasCompensation ? amount : '',
                 accept_cross_campus: acceptCrossCampus,
-                requires_management: (type === '寻人组队') ? requiresManagement : false
+                requires_management: requiresManagement
             })
         });
         const data = await response.json();
@@ -84,8 +100,10 @@ async function createPost() {
             document.getElementById('post-compensation').checked = false;
             document.getElementById('post-amount').value = '';
             document.getElementById('post-amount').style.display = 'none';
-            document.getElementById('post-type').value = '寻人组队'; // 重置为默认类型
             document.getElementById('post-cross-campus').checked = false;
+            selectedPostLabel = '寻人组队';
+            if (document.getElementById('post-custom-label')) document.getElementById('post-custom-label').value = '';
+            renderLabelPickers();
             if (document.getElementById('post-requires-management')) {
                 document.getElementById('post-requires-management').checked = false;
             }
@@ -107,6 +125,87 @@ let navTicking = false;
 let lastScrollY = 0;
 let lastScrollTs = Date.now();
 let indicatorResetTimer = null;
+const POST_LABEL_OPTIONS = ['寻人组队', '提供技能', '自定义'];
+let selectedPostLabel = '寻人组队';
+let smartSearchState = { query: '', orderedIds: [], scoreMap: new Map() };
+let smartSearchReqToken = 0;
+let smartSearchDebounceTimer = null;
+
+function normalizePostLabels(post) {
+    if (!post) return [];
+    if (Array.isArray(post.post_labels)) return post.post_labels.filter(Boolean);
+    if (typeof post.post_labels === 'string') {
+        try {
+            const parsed = JSON.parse(post.post_labels);
+            if (Array.isArray(parsed)) return parsed.filter(Boolean);
+        } catch (e) {
+            return post.post_labels.split(/[,，、]/).map((x) => x.trim()).filter(Boolean);
+        }
+    }
+    return [];
+}
+
+function labelChipHtml(label, selected, onClick) {
+    const bg = selected ? '#dbeafe' : '#f8fafc';
+    const color = selected ? '#1d4ed8' : '#334155';
+    const border = selected ? '#93c5fd' : '#cbd5e1';
+    return `<button type="button" onclick="${onClick}" style="width:auto; padding:6px 10px; border-radius:999px; border:1px solid ${border}; background:${bg}; color:${color}; font-size:12px; cursor:pointer;"># ${label}</button>`;
+}
+
+function renderLabelPickers() {
+    const postBox = document.getElementById('post-label-picker');
+    if (postBox) {
+        const currentValue = document.getElementById('post-custom-label')?.value || '';
+        let chips = POST_LABEL_OPTIONS
+            .map((label) => labelChipHtml(label, selectedPostLabel === label, `togglePostLabel('${label}')`))
+            .join('');
+        if (selectedPostLabel === '自定义') {
+            chips += `
+                <input
+                    type="text"
+                    id="post-custom-label"
+                    maxlength="12"
+                    placeholder="输入自定义标签"
+                    oninput="syncCustomLabelInputWidth()"
+                    style="width:108px; min-width:108px; max-width:320px; padding:6px 10px; margin:0; border-radius:999px; border:1px solid #93c5fd; box-sizing:border-box; font-size:12px; line-height:1.2; background:#dbeafe; color:#1d4ed8; transition:width .16s ease;"
+                />
+            `;
+        }
+        postBox.innerHTML = chips;
+        if (selectedPostLabel === '自定义') {
+            const input = document.getElementById('post-custom-label');
+            if (input) input.value = currentValue;
+        }
+        syncCustomLabelInputWidth();
+    }
+}
+
+function measureChipInputWidth(text) {
+    if (!window._customTagInputMeasureCtx) {
+        const canvas = document.createElement('canvas');
+        window._customTagInputMeasureCtx = canvas.getContext('2d');
+    }
+    const ctx = window._customTagInputMeasureCtx;
+    ctx.font = '12px "Segoe UI", sans-serif';
+    return Math.ceil(ctx.measureText(String(text || '')).width);
+}
+
+function syncCustomLabelInputWidth() {
+    const customLabelInput = document.getElementById('post-custom-label');
+    if (!customLabelInput) return;
+    const raw = String(customLabelInput.value || '');
+    const placeholder = customLabelInput.placeholder || '';
+    const measureText = raw.length ? raw : placeholder;
+    const textWidth = measureChipInputWidth(measureText);
+    const dynamicWidth = Math.max(108, Math.min(320, textWidth + 32));
+    customLabelInput.style.width = `${dynamicWidth}px`;
+}
+
+function togglePostLabel(label) {
+    selectedPostLabel = label;
+    renderLabelPickers();
+    updatePlaceholders();
+}
 
 function scrollToSection(section) {
     if (section === 'top') return scrollToTop();
@@ -319,9 +418,11 @@ function renderPosts() {
 
     postsToRender.forEach(post => {
         const isMyPost = (post.author === currentUser);
+        const labels = normalizePostLabels(post);
+        const primaryLabel = labels[0] || post.type || '';
         
         // 判断是否是"提供技能"类型
-        const isSkillPost = (post.type === '提供技能');
+        const isSkillPost = (post.type === '提供技能') || primaryLabel === '提供技能';
         
         // 三重状态判断逻辑（仅对"寻人组队"适用）
         let actionBtn = '';
@@ -395,12 +496,16 @@ function renderPosts() {
             `;
         }
 
+        const labelChips = primaryLabel
+            ? `<span class="post-tag" style="background:#eef2ff; color:#3730a3; padding:6px 10px; border-radius:999px; font-size:12px;">#${primaryLabel}</span>`
+            : '';
+
         const postHTML = `
             <div class="post-card" style="padding: 24px; background: white; border-radius: 8px; border: 1px solid #e5e7eb; box-shadow: 0 1px 2px rgba(0,0,0,0.05);">
                 <div style="display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; margin-bottom: 16px;">
                     <div style="flex: 1;">
                         <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 12px;">
-                            <span class="post-tag" style="background: #dbeafe; color: #1e40af; padding: 6px 12px; border-radius: 4px; font-size: 13px; font-weight: bold;">${post.type || ''}</span>
+                            ${labelChips}
                             ${compensationTag}
                             ${modeTag}
                         </div>
@@ -447,30 +552,41 @@ function renderPosts() {
 
 // 应用过滤器并返回新数组
 function applyFilters(posts) {
-    const text = (document.getElementById('filter-text')?.value || '').trim().toLowerCase();
-    const type = (document.getElementById('filter-type')?.value || '');
-    const compensation = (document.getElementById('filter-compensation')?.value || '');
+    const text = (document.getElementById('filter-text')?.value || '').trim();
+    const scope = (document.getElementById('filter-scope')?.value || 'all');
+    const compensationFilter = (document.getElementById('filter-compensation')?.value || 'all');
     const sortBy = (document.getElementById('sort-by')?.value || 'newest');
+    const currentUser = localStorage.getItem('currentUser');
 
     let result = posts.slice(); // 克隆数组
 
     if (text) {
-        result = result.filter(p => ((p.title || '') + ' ' + (p.content || '')).toLowerCase().includes(text));
-    }
-
-    // 按帖子类型过滤
-    if (type) {
-        result = result.filter(p => p.type === type);
-    }
-
-    if (compensation) {
-        // 简化为两个选项：free (无报酬) 或 paid (有报酬)
-        // 注意：提供技能类型的帖子不显示报酬，所以过滤时不会包含有报酬的提供技能帖子
-        if (compensation === 'free') {
-            result = result.filter(p => !p.compensation);
-        } else if (compensation === 'paid') {
-            result = result.filter(p => p.compensation && p.compensation.length > 0);
+        const normalizedQuery = text.toLowerCase();
+        if (smartSearchState.query === normalizedQuery && smartSearchState.orderedIds.length) {
+            const allowed = new Set(smartSearchState.orderedIds);
+            result = result.filter((p) => allowed.has(p.id));
+            result.sort((a, b) => (smartSearchState.scoreMap.get(b.id) || 0) - (smartSearchState.scoreMap.get(a.id) || 0));
+        } else {
+            const queryTokens = normalizedQuery.split(/\s+/).filter(Boolean);
+            result = result.filter((p) => {
+                const labels = normalizePostLabels(p).join(' ');
+                const haystack = `${p.title || ''} ${p.content || ''} ${labels}`.toLowerCase();
+                if (haystack.includes(normalizedQuery)) return true;
+                if (!queryTokens.length) return true;
+                const hitCount = queryTokens.filter((token) => haystack.includes(token)).length;
+                return hitCount >= Math.max(1, Math.ceil(queryTokens.length * 0.6));
+            });
         }
+    }
+
+    if (scope === 'mine') {
+        result = result.filter((p) => p.author === currentUser);
+    }
+
+    if (compensationFilter === 'paid') {
+        result = result.filter((p) => String(p.compensation || '').trim() !== '');
+    } else if (compensationFilter === 'unpaid') {
+        result = result.filter((p) => String(p.compensation || '').trim() === '');
     }
 
     // 简单基于字段 popularity / likes / views 排序
@@ -487,21 +603,73 @@ function applyFilters(posts) {
 function clearFilters() {
     postsExpanded = false;
     if (document.getElementById('filter-text')) document.getElementById('filter-text').value = '';
-    if (document.getElementById('filter-type')) document.getElementById('filter-type').value = '';
-    if (document.getElementById('filter-compensation')) document.getElementById('filter-compensation').value = '';
+    if (document.getElementById('filter-scope')) document.getElementById('filter-scope').value = 'all';
+    if (document.getElementById('filter-compensation')) document.getElementById('filter-compensation').value = 'all';
     if (document.getElementById('sort-by')) document.getElementById('sort-by').value = 'newest';
+    smartSearchState = { query: '', orderedIds: [], scoreMap: new Map() };
     renderPosts();
+}
+
+async function requestSmartSearch(text) {
+    const query = String(text || '').trim();
+    const normalizedQuery = query.toLowerCase();
+    if (!normalizedQuery) {
+        smartSearchState = { query: '', orderedIds: [], scoreMap: new Map() };
+        renderPosts();
+        return;
+    }
+    const token = ++smartSearchReqToken;
+    const currentUser = localStorage.getItem('currentUser') || '';
+    try {
+        const res = await fetch(`http://localhost:3000/api/posts/search-ai?q=${encodeURIComponent(query)}&user=${encodeURIComponent(currentUser)}&limit=120`);
+        const json = await res.json();
+        if (token !== smartSearchReqToken) return;
+        if (json.success && Array.isArray(json.data)) {
+            const orderedIds = [];
+            const scoreMap = new Map();
+            json.data.forEach((item) => {
+                if (!item || typeof item.id === 'undefined') return;
+                orderedIds.push(item.id);
+                scoreMap.set(item.id, Number(item.score || 0));
+            });
+            smartSearchState = { query: normalizedQuery, orderedIds, scoreMap };
+        } else {
+            smartSearchState = { query: normalizedQuery, orderedIds: [], scoreMap: new Map() };
+        }
+        renderPosts();
+    } catch (error) {
+        if (token !== smartSearchReqToken) return;
+        smartSearchState = { query: normalizedQuery, orderedIds: [], scoreMap: new Map() };
+        renderPosts();
+    }
 }
 
 // 在页面加载后给过滤控件绑定事件（实时过滤）
 window.addEventListener('DOMContentLoaded', () => {
-    ['filter-text','filter-type','filter-compensation','sort-by'].forEach(id => {
+    ['filter-scope','filter-compensation','sort-by'].forEach(id => {
         const el = document.getElementById(id);
-        if (el) el.addEventListener('input', () => {
-            postsExpanded = false;
-            renderPosts();
-        });
+        if (el) {
+            const trigger = () => {
+                postsExpanded = false;
+                renderPosts();
+            };
+            el.addEventListener('input', trigger);
+            el.addEventListener('change', trigger);
+        }
     });
+    const textFilter = document.getElementById('filter-text');
+    if (textFilter) {
+        const onType = () => {
+            postsExpanded = false;
+            if (smartSearchDebounceTimer) clearTimeout(smartSearchDebounceTimer);
+            smartSearchDebounceTimer = setTimeout(() => {
+                requestSmartSearch(textFilter.value);
+            }, 220);
+            renderPosts();
+        };
+        textFilter.addEventListener('input', onType);
+        textFilter.addEventListener('change', onType);
+    }
 
     const rightEntries = Array.from(document.querySelectorAll('.right-center-entry'));
     if (rightEntries.length) {
@@ -878,29 +1046,22 @@ function handleChatInputKeyDown(e) {
 }
 
 function updatePlaceholders() {
-    const type = document.getElementById('post-type').value;
     const titleInput = document.getElementById('post-title');
     const contentInput = document.getElementById('post-content');
     const compensationSection = document.getElementById('compensation-section');
     const managementSection = document.getElementById('management-section');
-
-    if (type === '寻人组队') {
-        titleInput.placeholder = "一句话概括你的需求 (如：急寻一名会弹吉他的同学迎新晚会伴奏)";
-        contentInput.placeholder = "详细描述一下任务时间、地点、要求或可能愿意提供的报酬...";
-        compensationSection.style.display = 'flex';
-        if (managementSection) managementSection.style.display = 'block';
-    } else if (type === '提供技能') {
-        titleInput.placeholder = "一句话概括你能做什么 (如：精通什么编程语言/海报设计/视频剪辑)";
-        contentInput.placeholder = "详细描述一下你的技能水平、空闲时间以及可能会存在的期望报酬...";
-        compensationSection.style.display = 'none';
-        if (managementSection) managementSection.style.display = 'none';
-        document.getElementById('post-compensation').checked = false;
-        document.getElementById('post-amount').value = '';
-        document.getElementById('post-amount').style.display = 'none';
-        if (document.getElementById('post-requires-management')) {
-            document.getElementById('post-requires-management').checked = false;
-        }
+    if (selectedPostLabel === '提供技能') {
+        titleInput.placeholder = '你能提供什么支持？';
+        contentInput.placeholder = '写明可提供的支持内容、可参与时段、协作方式和边界';
+    } else if (selectedPostLabel === '自定义') {
+        titleInput.placeholder = '给你的活动起一个清晰标题';
+        contentInput.placeholder = '描述一下吧';
+    } else {
+        titleInput.placeholder = '你希望招募什么角色？';
+        contentInput.placeholder = '写明活动目标、需要的角色、时间安排和协作要求';
     }
+    compensationSection.style.display = 'flex';
+    if (managementSection) managementSection.style.display = 'block';
 }
 
 async function deletePost(postId) {
@@ -1045,7 +1206,11 @@ async function loadProjectDetail(projectId) {
             <div style="margin:10px 0 14px 0;">
                 <strong style="display:block; margin-bottom:6px;">人员组成</strong>
                 <div style="display:flex; gap:6px; flex-wrap:wrap;">
-                    ${members.length ? members.map((m) => `<span style="font-size:12px; background:${m.role === 'leader' ? '#dbeafe' : '#f1f5f9'}; color:#334155; padding:4px 8px; border-radius:999px;">${m.user_name}${m.role === 'leader' ? '（队长）' : ''}</span>`).join('') : '<span style="font-size:12px; color:#9ca3af;">暂无成员信息</span>'}
+                    ${members.length ? members.map((m) => {
+                        const roleText = m.role === 'leader' ? '负责人' : (m.role === 'core_member' ? '核心成员' : '普通成员');
+                        const bg = m.role === 'leader' ? '#dbeafe' : (m.role === 'core_member' ? '#ecfeff' : '#f1f5f9');
+                        return `<span style="font-size:12px; background:${bg}; color:#334155; padding:4px 8px; border-radius:999px;">${m.user_name}（${roleText}）</span>`;
+                    }).join('') : '<span style="font-size:12px; color:#9ca3af;">暂无成员信息</span>'}
                 </div>
             </div>
 
@@ -1181,7 +1346,7 @@ async function loadRecommendations() {
 
         const items = data.data || [];
         if (!items.length) {
-            container.innerHTML = '<p style="color:#6b7280; text-align:center; padding:12px;">当前没有符合召回条件的推荐，先完善个人画像或发布更多帖子试试。</p>';
+            container.innerHTML = '<p style="color:#6b7280; text-align:center; padding:12px;">当前没有符合条件的推荐，先完善个人画像或发布更多帖子试试。</p>';
             return;
         }
 

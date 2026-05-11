@@ -26,6 +26,27 @@ function statusLabel(status) {
     return status || '未知';
 }
 
+function roleLabel(role) {
+    if (role === 'leader') return '负责人';
+    if (role === 'core_member') return '核心成员';
+    return '普通成员';
+}
+
+function requirementStatusLabel(status) {
+    if (status === 'open') return '待开始';
+    if (status === 'in_progress') return '进行中';
+    if (status === 'blocked') return '阻塞';
+    if (status === 'done') return '已完成';
+    return status || '未知';
+}
+
+function requirementPriorityLabel(priority) {
+    if (priority === 'high') return '高优先级';
+    if (priority === 'medium') return '中优先级';
+    if (priority === 'low') return '低优先级';
+    return priority || '未设置';
+}
+
 function escapeHtml(value) {
     return String(value || '')
         .replace(/&/g, '&amp;')
@@ -124,9 +145,12 @@ function renderMainPanel() {
     const members = detail.members || [];
     const milestones = detail.milestones || [];
     const checkins = detail.checkins || [];
+    const requirements = detail.requirements || [];
     const scoreboard = detail.scoreboard || [];
     const events = detail.events || [];
     const feedback = detail.feedback || [];
+    const memberChanges = detail.member_changes || [];
+    const requirementChanges = detail.requirement_changes || [];
     const canManage = detail.can_manage;
 
     const revieweeOptions = members
@@ -151,7 +175,92 @@ function renderMainPanel() {
                 ` : '<span class="muted">仅队长可切换状态</span>'}
             </div>
             <div class="team-tags">
-                ${members.map((m) => `<span>${escapeHtml(m.user_name)} · ${m.role === 'leader' ? '队长' : '成员'}</span>`).join('')}
+                ${members.map((m) => `<span>${escapeHtml(m.user_name)} · ${roleLabel(m.role)}</span>`).join('')}
+            </div>
+        </section>
+
+        <section class="team-grid-2">
+            <div class="team-card">
+                <h3>项目成员调整</h3>
+                <div class="team-list">
+                    ${members.length ? members.map((m) => `
+                        <div class="team-list-item">
+                            <div>
+                                <strong>${escapeHtml(m.user_name)}</strong>
+                                <p>${roleLabel(m.role)} · 加入时间 ${escapeHtml(m.joined_at || '-')}</p>
+                            </div>
+                            <div style="display:flex; gap:8px; flex-wrap:wrap; justify-content:flex-end;">
+                                ${canManage ? `
+                                    <select id="member-role-${encodeURIComponent(m.user_name)}" style="width:140px;">
+                                        <option value="leader" ${m.role === 'leader' ? 'selected' : ''}>负责人</option>
+                                        <option value="core_member" ${m.role === 'core_member' ? 'selected' : ''}>核心成员</option>
+                                        <option value="member" ${m.role === 'member' ? 'selected' : ''}>普通成员</option>
+                                    </select>
+                                    <button onclick="updateProjectMemberRole('${encodeURIComponent(m.user_name)}')">改角色</button>
+                                    ${(m.user_name !== currentUser || m.role !== 'leader') ? `<button class="danger" onclick="removeProjectMember('${encodeURIComponent(m.user_name)}')">移出</button>` : ''}
+                                ` : (m.user_name === currentUser && m.role !== 'leader' ? `<button class="danger" onclick="removeProjectMember('${encodeURIComponent(m.user_name)}')">退出项目</button>` : '')}
+                            </div>
+                        </div>
+                    `).join('') : '<p class="muted">暂无成员</p>'}
+                </div>
+                ${canManage ? `
+                    <div class="team-form-row">
+                        <input id="new-member-name" type="text" placeholder="成员用户名">
+                        <select id="new-member-role">
+                            <option value="member">普通成员</option>
+                            <option value="core_member">核心成员</option>
+                            <option value="leader">负责人</option>
+                        </select>
+                        <button onclick="addProjectMember()">新增成员</button>
+                    </div>
+                ` : '<p class="muted">仅负责人可新增成员和调整角色。</p>'}
+            </div>
+
+            <div class="team-card">
+                <h3>项目需求池（可持续发布）</h3>
+                <div class="team-form-row">
+                    <input id="new-req-title" type="text" placeholder="需求标题">
+                    <select id="new-req-priority">
+                        <option value="high">高优先级</option>
+                        <option value="medium" selected>中优先级</option>
+                        <option value="low">低优先级</option>
+                    </select>
+                </div>
+                <div class="team-form-row">
+                    <input id="new-req-desc" type="text" placeholder="需求描述（可选）">
+                    <select id="new-req-assignee">
+                        <option value="">暂不分配</option>
+                        ${members.map((m) => `<option value="${escapeHtml(m.user_name)}">${escapeHtml(m.user_name)}</option>`).join('')}
+                    </select>
+                    <button onclick="createRequirement()">发布需求</button>
+                </div>
+                <div class="team-list">
+                    ${requirements.length ? requirements.map((r) => `
+                        <div class="team-list-item">
+                            <div>
+                                <strong>${escapeHtml(r.title)}</strong>
+                                <p>${requirementStatusLabel(r.status)} · ${requirementPriorityLabel(r.priority)} · 指派 ${escapeHtml(r.assignee || '未分配')} · 由 ${escapeHtml(r.created_by || '系统')} 发布</p>
+                                ${r.description ? `<p>${escapeHtml(r.description)}</p>` : ''}
+                            </div>
+                            <div style="display:flex; gap:8px; flex-wrap:wrap; justify-content:flex-end;">
+                                <select id="req-status-${r.id}" style="width:120px;">
+                                    <option value="open" ${r.status === 'open' ? 'selected' : ''}>待开始</option>
+                                    <option value="in_progress" ${r.status === 'in_progress' ? 'selected' : ''}>进行中</option>
+                                    <option value="blocked" ${r.status === 'blocked' ? 'selected' : ''}>阻塞</option>
+                                    <option value="done" ${r.status === 'done' ? 'selected' : ''}>已完成</option>
+                                </select>
+                                <button onclick="updateRequirementStatus(${r.id})">更新状态</button>
+                                ${canManage ? `
+                                    <select id="req-assignee-${r.id}" style="width:130px;">
+                                        <option value="">未分配</option>
+                                        ${members.map((m) => `<option value="${escapeHtml(m.user_name)}" ${m.user_name === r.assignee ? 'selected' : ''}>${escapeHtml(m.user_name)}</option>`).join('')}
+                                    </select>
+                                    <button onclick="reassignRequirement(${r.id})">改派</button>
+                                ` : ''}
+                            </div>
+                        </div>
+                    `).join('') : '<p class="muted">暂无需求记录</p>'}
+                </div>
             </div>
         </section>
 
@@ -256,6 +365,36 @@ function renderMainPanel() {
                             </div>
                         </div>
                     `).join('') : '<p class="muted">暂无反馈</p>'}
+                </div>
+            </div>
+        </section>
+
+        <section class="team-grid-2">
+            <div class="team-card">
+                <h3>成员变更历史</h3>
+                <div class="team-list">
+                    ${memberChanges.length ? memberChanges.map((h) => `
+                        <div class="team-list-item">
+                            <div>
+                                <strong>${escapeHtml(h.action_type || 'change')} · ${escapeHtml(h.target_user || '-')}</strong>
+                                <p>操作者 ${escapeHtml(h.actor || '系统')} · ${escapeHtml(h.from_role || '-')} -> ${escapeHtml(h.to_role || '-')}</p>
+                                ${h.note ? `<p>${escapeHtml(h.note)}</p>` : ''}
+                            </div>
+                        </div>
+                    `).join('') : '<p class="muted">暂无成员变更记录</p>'}
+                </div>
+            </div>
+            <div class="team-card">
+                <h3>需求变更历史</h3>
+                <div class="team-list">
+                    ${requirementChanges.length ? requirementChanges.map((h) => `
+                        <div class="team-list-item">
+                            <div>
+                                <strong>${escapeHtml(h.action_type || 'update')} · 需求 #${escapeHtml(h.requirement_id)}</strong>
+                                <p>操作者 ${escapeHtml(h.actor || '系统')} · ${escapeHtml(h.created_at || '')}</p>
+                            </div>
+                        </div>
+                    `).join('') : '<p class="muted">暂无需求变更记录</p>'}
                 </div>
             </div>
         </section>
@@ -469,6 +608,122 @@ async function submitProjectRating() {
         await refreshAll();
     } catch (err) {
         alert('网络错误，提交失败');
+    }
+}
+
+async function createRequirement() {
+    const title = (document.getElementById('new-req-title')?.value || '').trim();
+    const description = (document.getElementById('new-req-desc')?.value || '').trim();
+    const priority = document.getElementById('new-req-priority')?.value || 'medium';
+    const assignee = document.getElementById('new-req-assignee')?.value || '';
+    if (!title) return alert('请输入需求标题');
+
+    try {
+        const resp = await fetch(`http://localhost:3000/api/projects/${activeProjectId}/requirements`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ actor: currentUser, title, description, priority, assignee })
+        });
+        const json = await resp.json();
+        if (!json.success) return alert(json.message || '发布需求失败');
+        await refreshAll();
+    } catch (err) {
+        alert('网络错误，发布需求失败');
+    }
+}
+
+async function updateRequirementStatus(requirementId) {
+    const status = document.getElementById(`req-status-${requirementId}`)?.value || 'open';
+    try {
+        const resp = await fetch(`http://localhost:3000/api/projects/${activeProjectId}/requirements/${requirementId}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ actor: currentUser, status })
+        });
+        const json = await resp.json();
+        if (!json.success) return alert(json.message || '状态更新失败');
+        await refreshAll();
+    } catch (err) {
+        alert('网络错误，状态更新失败');
+    }
+}
+
+async function reassignRequirement(requirementId) {
+    const assignee = document.getElementById(`req-assignee-${requirementId}`)?.value || '';
+    try {
+        const resp = await fetch(`http://localhost:3000/api/projects/${activeProjectId}/requirements/${requirementId}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ actor: currentUser, assignee })
+        });
+        const json = await resp.json();
+        if (!json.success) return alert(json.message || '改派失败');
+        await refreshAll();
+    } catch (err) {
+        alert('网络错误，改派失败');
+    }
+}
+
+async function addProjectMember() {
+    const userName = (document.getElementById('new-member-name')?.value || '').trim();
+    const role = document.getElementById('new-member-role')?.value || 'member';
+    if (!userName) return alert('请输入成员用户名');
+
+    try {
+        const resp = await fetch(`http://localhost:3000/api/projects/${activeProjectId}/members`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ actor: currentUser, user_name: userName, role })
+        });
+        const json = await resp.json();
+        if (!json.success) return alert(json.message || '新增成员失败');
+        await refreshAll();
+    } catch (err) {
+        alert('网络错误，新增成员失败');
+    }
+}
+
+async function updateProjectMemberRole(encodedUserName) {
+    const userName = decodeURIComponent(encodedUserName || '');
+    const role = document.getElementById(`member-role-${encodedUserName}`)?.value || 'member';
+    if (!userName) return;
+
+    try {
+        const resp = await fetch(`http://localhost:3000/api/projects/${activeProjectId}/members/${encodeURIComponent(userName)}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ actor: currentUser, role })
+        });
+        const json = await resp.json();
+        if (!json.success) return alert(json.message || '角色调整失败');
+        await refreshAll();
+    } catch (err) {
+        alert('网络错误，角色调整失败');
+    }
+}
+
+async function removeProjectMember(encodedUserName) {
+    const userName = decodeURIComponent(encodedUserName || '');
+    if (!userName) return;
+    if (!confirm(`确定将 ${userName} 移出项目吗？`)) return;
+
+    let reassignTo = '';
+    const isManager = activeProjectDetail && activeProjectDetail.can_manage;
+    if (isManager) {
+        reassignTo = prompt('若该成员有未完成需求，可输入改派目标成员（留空则取消指派）') || '';
+    }
+
+    try {
+        const resp = await fetch(`http://localhost:3000/api/projects/${activeProjectId}/members/${encodeURIComponent(userName)}`, {
+            method: 'DELETE',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ actor: currentUser, reassign_to: reassignTo.trim() })
+        });
+        const json = await resp.json();
+        if (!json.success) return alert(json.message || '成员移除失败');
+        await refreshAll();
+    } catch (err) {
+        alert('网络错误，成员移除失败');
     }
 }
 

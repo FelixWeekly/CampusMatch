@@ -3,6 +3,15 @@ const currentUser = localStorage.getItem('currentUser');
 const urlParams = new URLSearchParams(window.location.search);
 const viewingUser = urlParams.get('user') || currentUser; 
 
+function escapeHtml(value) {
+    return String(value || '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+}
+
 window.onload = function() {
     if (!currentUser) {
         alert('请先登录！');
@@ -114,6 +123,31 @@ async function fetchProfileData() {
                 });
             } else {
                 reviewsList.innerHTML = '<p style="color: #9ca3af; text-align: center; padding: 20px;">暂无任务结项评价</p>';
+            }
+
+            const ongoingBox = document.getElementById('ongoing-activities');
+            const historyBox = document.getElementById('history-activities');
+            const ongoing = data.activities && Array.isArray(data.activities.ongoing) ? data.activities.ongoing : [];
+            const history = data.activities && Array.isArray(data.activities.history) ? data.activities.history : [];
+            if (ongoingBox) {
+                ongoingBox.innerHTML = ongoing.length
+                    ? ongoing.slice(0, 8).map((item) => `
+                        <div class="activity-item">
+                            <strong style="font-size:13px; color:#1f2937;">${escapeHtml(item.title)}</strong>
+                            <p style="font-size:12px; color:#64748b; margin-top:4px;">${escapeHtml(item.kind)} · ${escapeHtml(item.status)} · ${escapeHtml(item.role || '-')}</p>
+                        </div>
+                     `).join('')
+                    : '<p style="font-size:12px; color:#94a3b8;">暂无进行中活动</p>';
+            }
+            if (historyBox) {
+                historyBox.innerHTML = history.length
+                    ? history.slice(0, 8).map((item) => `
+                        <div class="activity-item">
+                            <strong style="font-size:13px; color:#1f2937;">${escapeHtml(item.title)}</strong>
+                            <p style="font-size:12px; color:#64748b; margin-top:4px;">${escapeHtml(item.kind)} · ${escapeHtml(item.status)} · ${escapeHtml(item.role || '-')}</p>
+                        </div>
+                     `).join('')
+                    : '<p style="font-size:12px; color:#94a3b8;">暂无历史活动</p>';
             }
         }
     } catch (error) {

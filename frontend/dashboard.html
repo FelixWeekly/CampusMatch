@@ -52,16 +52,16 @@
         </div>
 
         <div class="publish-card">
-            <h2 style="font-size: 20px; color: #111827; margin-bottom: 24px;">发布新任务 / 捞人帖 📢</h2>
+            <h2 style="font-size: 24px; color: #111827; margin-bottom: 24px; font-weight: 700;">发布</h2>
             
-            <select id="post-type" onchange="updatePlaceholders()">
-                <option value="寻人组队">寻人组队</option>
-                <option value="提供技能">提供技能</option>
-            </select>
+            <div style="margin-bottom:16px;">
+                <div style="font-size:13px; color:#6b7280; margin-bottom:8px;">选择标签</div>
+                <div id="post-label-picker" style="display:flex; gap:8px; flex-wrap:wrap; align-items:center;"></div>
+            </div>
             
-            <input type="text" id="post-title" placeholder="一句话概括你的需求 (如：急寻一名会弹吉他的同学迎新晚会伴奏)">
+            <input type="text" id="post-title" placeholder="一句话概括你的活动或需求">
             
-            <textarea id="post-content" rows="4" placeholder="详细描述一下任务时间、地点、要求或可能会愿意提供的报酬..."></textarea>
+            <textarea id="post-content" rows="4" placeholder="详细描述活动内容、时间、地点与协作方式"></textarea>
 
             <div style="display:flex; gap:16px; margin-bottom:16px; flex-wrap:wrap; align-items:baseline;">
                 <div id="cross-campus-section">
@@ -105,16 +105,15 @@
         </div>
         <div id="posts-section-body">
         <div style="display:flex; gap:10px; align-items:flex-start; margin-bottom:18px; flex-wrap:wrap;">
-            <input id="filter-text" type="search" placeholder="搜索标题或内容..." style="flex:1; padding:10px; border-radius:8px; border:1px solid #e5e7eb; height:40px; box-sizing:border-box; font-size:14px; line-height:1.4;" />
-            <select id="filter-type" style="width:160px; padding:10px; border-radius:8px; border:1px solid #e5e7eb; height:40px; box-sizing:border-box; font-size:14px; line-height:1.4;">
-                <option value="">帖子类型: 全部</option>
-                <option value="寻人组队">寻人组队</option>
-                <option value="提供技能">提供技能</option>
+            <input id="filter-text" type="search" placeholder="检索你感兴趣的内容" style="flex:1; padding:10px; border-radius:8px; border:1px solid #e5e7eb; height:40px; box-sizing:border-box; font-size:14px; line-height:1.4;" />
+            <select id="filter-scope" style="width:160px; padding:10px; border-radius:8px; border:1px solid #e5e7eb; height:40px; box-sizing:border-box; font-size:14px; line-height:1.4;">
+                <option value="all">范围: 全部帖子</option>
+                <option value="mine">范围: 我的帖子</option>
             </select>
             <select id="filter-compensation" style="width:160px; padding:10px; border-radius:8px; border:1px solid #e5e7eb; height:40px; box-sizing:border-box; font-size:14px; line-height:1.4;">
-                <option value="">报酬: 不限定</option>
-                <option value="free">无报酬</option>
-                <option value="paid">有报酬</option>
+                <option value="all">酬金: 全部</option>
+                <option value="paid">酬金: 有酬金</option>
+                <option value="unpaid">酬金: 无酬金</option>
             </select>
             <select id="sort-by" style="width:160px; padding:10px; border-radius:8px; border:1px solid #e5e7eb; height:40px; box-sizing:border-box; font-size:14px; line-height:1.4;">
                 <option value="newest">排序: 最新发布</option>
