@@ -13,23 +13,40 @@
                 <button onclick="goBackDashboard()" class="back-btn-custom team-back-btn">← 返回大厅</button>
             </div>
             <div class="team-title-wrap">
-                <h1>团队管理与监督中心</h1>
-                <p>完整流程：项目状态、里程碑、打卡、监督事件、反馈闭环、结项互评</p>
+                <h1>项目管理与协作中心</h1>
             </div>
         </header>
 
         <section class="team-layout">
             <aside class="team-left-panel">
-                <h3>我的项目</h3>
+                <div class="team-panel-head">
+                    <div>
+                        <h3>我的项目</h3>
+                    </div>
+                    <button type="button" class="team-panel-ghost" onclick="loadProjects()">刷新</button>
+                </div>
                 <div id="team-project-list" class="team-scroll"></div>
             </aside>
 
-            <main class="team-main-panel" id="team-main-panel">
-                <p class="team-empty">正在加载项目详情...</p>
+            <main class="team-main-panel team-main-shell">
+                <div class="team-main-toolbar">
+                    <div>
+                        <p class="team-eyebrow">当前项目</p>
+                        <h2 id="team-workspace-title">请选择一个项目</h2>
+                    </div>
+                    <div class="team-main-toolbar-actions">
+                        <button type="button" class="team-panel-ghost" onclick="resetViewOrder()">恢复默认顺序</button>
+                        <button type="button" class="team-panel-ghost" onclick="switchView('overview')">回到概览</button>
+                    </div>
+                </div>
+                <div id="team-view-nav" class="team-view-nav"></div>
+                <div id="team-main-panel" class="team-page-slot">
+                    <p class="team-empty">正在加载项目详情...</p>
+                </div>
             </main>
         </section>
     </div>
 
-    <script src="team_management.js"></script>
+    <script src="project_center.js"></script>
 </body>
 </html>

@@ -20,7 +20,7 @@
             
             <button onclick="login()">登 录</button>
             
-            <p class="switch-text">还没有账号？ <span onclick="switchForm('register')">点击注册</span></p>
+            <p class="switch-text">还没有账号？ <span onclick="switchForm('register')">点击注册</span> &nbsp;|&nbsp; <span onclick="switchForm('reset')">忘记密码？</span></p>
         </div>
 
         <!-- 注册表单区 (默认隐藏) -->
@@ -30,11 +30,32 @@
             
             <input type="text" id="reg-name" placeholder="你的昵称 / 姓名">
             <input type="email" id="reg-email" placeholder="校园邮箱 (用于身份验证)">
+            <div style="display:flex; gap:10px; margin-bottom: 24px;">
+                <input type="text" id="reg-code" placeholder="验证码" style="margin-bottom:0 !important; flex:1;">
+                <button type="button" onclick="sendCode('reg-email')" style="width:auto; margin-top:0; padding:12px 16px; white-space:nowrap;">获取验证码</button>
+            </div>
             <input type="password" id="reg-password" placeholder="设置密码">
             
             <button onclick="register()">注 册</button>
             
             <p class="switch-text">已有账号？ <span onclick="switchForm('login')">直接登录</span></p>
+        </div>
+
+        <!--找回密码表单区 (默认隐藏) -->
+        <div id="reset-box" class="form-box hidden">
+            <h2>重置密码 🔑</h2>
+            <p class="subtitle">通过邮箱验证重设你的密码</p>
+            
+            <input type="email" id="reset-email" placeholder="注册时的校园邮箱">
+            <div style="display:flex; gap:10px; margin-bottom: 24px;">
+                <input type="text" id="reset-code" placeholder="验证码" style="margin-bottom:0 !important; flex:1;">
+                <button type="button" onclick="sendCode('reset-email')" style="width:auto; margin-top:0; padding:12px 16px; white-space:nowrap;">获取验证码</button>
+            </div>
+            <input type="password" id="reset-password" placeholder="输入新密码">
+            
+            <button onclick="resetPassword()">重置密码</button>
+            
+            <p class="switch-text">想起密码了？ <span onclick="switchForm('login')">返回登录</span></p>
         </div>
     </div>
 

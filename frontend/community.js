@@ -276,14 +276,14 @@ async function loadCommunityRecommendations() {
     container.innerHTML = '正在计算社区推荐...';
 
     try {
-        const response = await fetch(`http://localhost:3000/api/community/recommendations?user=${encodeURIComponent(currentUser)}&limit=6`);
+        const response = await fetch(`http://localhost:3000/api/community/recommendations?user=${encodeURIComponent(currentUser)}&limit=2`);
         const data = await response.json();
         if (!data.success) {
             container.innerHTML = `<span style="color:#ef4444;">${data.message || '推荐加载失败'}</span>`;
             return;
         }
 
-        const recPosts = (data.data && data.data.posts) ? data.data.posts : [];
+        const recPosts = ((data.data && data.data.posts) ? data.data.posts : []).slice(0, 2);
         const recCircles = (data.data && data.data.circles) ? data.data.circles : [];
 
         const circlesHtml = recCircles.length

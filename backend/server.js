@@ -2,10 +2,12 @@ const express = require('express');
 const cors = require('cors');
 const dotenv = require('dotenv');
 const OpenAI = require('openai');
+const nodemailer = require('nodemailer'); // ✨ 加入发送邮件的验证方式
+const path = require('node:path');
 // 【魔法在这里】直接引入 Node.js 原生自带的 SQLite，无需任何 npm 安装！
 const { DatabaseSync } = require('node:sqlite');
 
-dotenv.config();
+dotenv.config({ path: path.join(__dirname, '.env') });
 
 const app = express();
 app.use(cors());
@@ -40,7 +42,48 @@ const aiClient = AI_RERANK_ENABLED
     : null;
 
 // 1. 连接数据库 (如果文件不存在会自动创建)
-const db = new DatabaseSync('./database.sqlite');
+const DB_FILE_PATH = path.join(__dirname, 'database.sqlite');
+const db = new DatabaseSync(DB_FILE_PATH);
+
+// ====== ✨ 邮箱验证配置 ======
+const verificationCodes = new Map(); // 用于内存中临时存储验证码
+
+// 配置邮件发送者 (供实际项目使用。不配置通过看终端输出也能继续测试)
+const transporter = nodemailer.createTransport({
+    service: process.env.EMAIL_SERVICE || 'qq', 
+    auth: {
+        user: process.env.EMAIL_USER || 'your_email@qq.com', // 你的邮箱账号
+        pass: process.env.EMAIL_PASS || 'your_email_auth_code' // 你的邮箱授权码
+    }
+});
+
+// 新增发送验证码的接口
+app.post('/api/send-code', async (req, res) => {
+    const { email } = req.body;
+    if (!email) return res.status(400).json({ success: false, message: '请提供邮箱' });
+
+    // 随机生成 6 位验证码
+    const code = Math.floor(100000 + Math.random() * 900000).toString();
+    // 存入内存，10 分钟后过期
+    verificationCodes.set(email, { code, expiresAt: Date.now() + 10 * 60 * 1000 });
+    
+    console.log(`\n===========================================`);
+    console.log(`📩 【测试系统邮件】正在向 ${email} 发送验证码: ${code}`);
+    console.log(`===========================================\n`);
+
+    try {
+        await transporter.sendMail({
+            from: process.env.EMAIL_USER || 'CampusMatch <your_email@qq.com>',
+            to: email,
+            subject: '【CampusMatch】账号验证码',
+            text: `你在 CampusMatch 平台发起验证请求，验证码是：${code}。\n请在10分钟内输入，如果这不是你的操作，请忽略此邮件。`
+        });
+        res.json({ success: true, message: '验证码已发送到邮箱，请查收！' });
+    } catch (err) {
+        // console.error('邮件配置失败:', err);
+        res.json({ success: true, message: '验证码已发送！(若报错请查看系统终端控制台打印的验证码)' });
+    }
+});
 
 // 2. 初始化三张表：用户表(users) + 帖子表(posts)/发布者 + 🌟 新增：申请表(applications)/接收者
 // 🌟 数据库全面升级：增加了详细资料字段，新增了 reviews (评价) 表
@@ -388,6 +431,33 @@ if (!hasColumn('posts', 'requires_management')) {
 if (!hasColumn('posts', 'post_labels')) {
     db.exec("ALTER TABLE posts ADD COLUMN post_labels TEXT DEFAULT '[]';");
 }
+
+function seedLegacyData() {
+    const userSeedStmt = db.prepare(
+        'INSERT OR IGNORE INTO users (id, name, email, password, department, grade, skills, bio, portfolio) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)'
+    );
+    [
+        [1, 'Felix', '123456@ide.com', '123456', '未设置院系', '未设置年级', '暂无技能标签', '这个人很懒，还没写自我介绍~', ''],
+        [2, 'Richard', '654321@ide.com', '123456', '未设置院系', '未设置年级', '暂无技能标签', '这个人很懒，还没写自我介绍~', '']
+    ].forEach((seed) => userSeedStmt.run(...seed));
+
+    const postSeedStmt = db.prepare(
+        'INSERT OR IGNORE INTO posts (id, author, title, content, type, post_labels, location, compensation, popularity, created_at, collaboration_mode, campus, expected_hours, structured_tags, feature_vector, accept_cross_campus, off_campus_location, requires_management) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
+    );
+    [
+        [1, 'felix', '寻找前端开发伙伴', '找个前端伙伴一起把页面做起来。', '寻人组队', '["前端"]', '', '', 0, '2026-05-12 05:59:43', 'online', '', 0, '{}', '[]', 0, '', 1],
+        [2, 'Richard', '求数学建模比赛组队', '找数模队友一起冲比赛。', '寻人组队', '["数模"]', '', '', 0, '2026-05-12 05:59:43', 'online', '', 0, '{}', '[]', 0, '', 1],
+        [4, 'Richard', '来个会弹吉他的', '会弹吉他的同学来一起玩。', '寻人组队', '["吉他"]', '', '', 0, '2026-04-22 05:51:52', 'online', '', 0, '{}', '[]', 0, '', 1],
+        [5, 'Richard', '来个会弹吉他的', '再发一次，继续找会弹吉他的同学。', '寻人组队', '["吉他"]', '', '', 0, '2026-04-22 05:52:06', 'online', '', 0, '{}', '[]', 0, '', 1],
+        [7, 'Richard', '雏雁项目招人了', '项目招人，欢迎加入。', '寻人组队', '["项目"]', '', '', 0, '2026-04-22 05:52:48', 'online', '', 0, '{}', '[]', 0, '', 1],
+        [8, 'Richard', '项目进 行中！', '项目正在推进，继续招人协作。', '寻人组队', '["项目"]', '', '', 0, '2026-05-12 00:49:15', 'online', '', 0, '{}', '[]', 0, '', 1]
+    ].forEach((seed) => postSeedStmt.run(...seed));
+
+    const seededPosts = db.prepare('SELECT * FROM posts WHERE id IN (1, 2, 4, 5, 7, 8) ORDER BY id ASC').all();
+    seededPosts.forEach((postRow) => ensureProjectForRecruitingPost(postRow));
+}
+
+seedLegacyData();
 
 function getProjectByPostId(postId) {
     return db.prepare('SELECT * FROM team_projects WHERE post_id = ?').get(postId);
@@ -1211,15 +1281,25 @@ function getPostMbtiHint(postText) {
     return match ? match[1] : '';
 }
 
-// 3. 编写【注册接口】
+// 3. 编写【注册接口】（增加验证码）
 app.post('/api/register', (req, res) => {
-    const { name, email, password } = req.body;
+    const { name, email, password, code } = req.body;
     
+    // 验证码检查
+    const record = verificationCodes.get(email);
+    if (!record || record.code !== code || Date.now() > record.expiresAt) {
+        return res.status(400).json({ success: false, message: '验证码错误或已过期！' });
+    }
+
     try {
         // 准备 SQL 语句
-        const stmt = db.prepare("INSERT INTO users (name, email, password, campus) VALUES (?, ?, ?, '')");
+        const stmt = db.prepare("INSERT INTO users (name, email, password, department) VALUES (?, ?, ?, '未设置')");
         // 执行插入
         stmt.run(name, email, password);
+        
+        // 注册成功后清理验证码
+        verificationCodes.delete(email);
+
         const newUser = db.prepare('SELECT * FROM users WHERE name = ?').get(name);
         upsertUserFeatureStore(newUser);
         res.json({ success: true, message: '注册成功！' });
@@ -1243,6 +1323,29 @@ app.post('/api/login', (req, res) => {
             res.json({ success: true, message: '登录成功', userName: row.name });
         } else {
             res.status(401).json({ success: false, message: '邮箱或密码错误！' });
+        }
+    } catch (err) {
+        res.status(500).json({ success: false, message: '服务器内部错误' });
+    }
+});
+
+// 新增：【找回/修改密码】接口（通过邮箱验证）
+app.post('/api/reset-password', (req, res) => {
+    const { email, password, code } = req.body;
+
+    const record = verificationCodes.get(email);
+    if (!record || record.code !== code || Date.now() > record.expiresAt) {
+        return res.status(400).json({ success: false, message: '验证码错误或已过期！' });
+    }
+
+    try {
+        const stmt = db.prepare("UPDATE users SET password = ? WHERE email = ?");
+        const info = stmt.run(password, email);
+        if (info.changes > 0) {
+            verificationCodes.delete(email);
+            res.json({ success: true, message: '密码已重置，请返回登录！' });
+        } else {
+            res.status(404).json({ success: false, message: '该邮箱账号不存在！' });
         }
     } catch (err) {
         res.status(500).json({ success: false, message: '服务器内部错误' });
@@ -1481,9 +1584,14 @@ app.get('/api/recommendations-ai', async (req, res) => {
 
         const candidatesForAI = context.ranked.slice(0, 12);
         let reranked = null;
+        let aiErrorMessage = 'AI 重排暂时不可用，已自动回退基础推荐。';
         try {
             reranked = await rerankWithAI(context.user, candidatesForAI, limit);
         } catch (aiErr) {
+            const isRateLimited = Number(aiErr && aiErr.status) === 429 || String((aiErr && aiErr.code) || '') === '1305';
+            if (isRateLimited) {
+                aiErrorMessage = 'AI 服务当前访问量过大，已自动回退基础推荐。';
+            }
             reranked = null;
         }
 
@@ -1497,7 +1605,7 @@ app.get('/api/recommendations-ai', async (req, res) => {
                 ai_rerank_enabled: true,
                 ai_used: false,
                 fallback: true,
-                message: 'AI 重排暂时不可用，已自动回退基础推荐。'
+                message: aiErrorMessage
             });
         }
 
@@ -1625,7 +1733,12 @@ app.delete('/api/posts/:id', (req, res) => {
         if (!post) {
             return res.status(404).json({ success: false, message: '帖子不存在' });
         }
-        if (post.author !== author) {
+        const normalizedAuthor = String(author || '').trim().toLowerCase();
+        const normalizedPostAuthor = String(post.author || '').trim().toLowerCase();
+        if (!normalizedAuthor) {
+            return res.status(400).json({ success: false, message: '缺少作者信息' });
+        }
+        if (normalizedPostAuthor !== normalizedAuthor) {
             return res.status(403).json({ success: false, message: '警告：你没有权限删除别人的帖子！' });
         }
 

@@ -217,9 +217,9 @@ function renderMainPanel() {
             </div>
 
             <div class="team-card">
-                <h3>项目需求池（可持续发布）</h3>
+                <h3>项目帖子池（可持续发布）</h3>
                 <div class="team-form-row">
-                    <input id="new-req-title" type="text" placeholder="需求标题">
+                    <input id="new-req-title" type="text" placeholder="帖子标题">
                     <select id="new-req-priority">
                         <option value="high">高优先级</option>
                         <option value="medium" selected>中优先级</option>
@@ -227,12 +227,12 @@ function renderMainPanel() {
                     </select>
                 </div>
                 <div class="team-form-row">
-                    <input id="new-req-desc" type="text" placeholder="需求描述（可选）">
+                    <input id="new-req-desc" type="text" placeholder="帖子描述（可选）">
                     <select id="new-req-assignee">
                         <option value="">暂不分配</option>
                         ${members.map((m) => `<option value="${escapeHtml(m.user_name)}">${escapeHtml(m.user_name)}</option>`).join('')}
                     </select>
-                    <button onclick="createRequirement()">发布需求</button>
+                    <button onclick="createRequirement()">发布帖子</button>
                 </div>
                 <div class="team-list">
                     ${requirements.length ? requirements.map((r) => `
@@ -616,7 +616,7 @@ async function createRequirement() {
     const description = (document.getElementById('new-req-desc')?.value || '').trim();
     const priority = document.getElementById('new-req-priority')?.value || 'medium';
     const assignee = document.getElementById('new-req-assignee')?.value || '';
-    if (!title) return alert('请输入需求标题');
+    if (!title) return alert('请输入帖子标题');
 
     try {
         const resp = await fetch(`http://localhost:3000/api/projects/${activeProjectId}/requirements`, {
@@ -625,10 +625,10 @@ async function createRequirement() {
             body: JSON.stringify({ actor: currentUser, title, description, priority, assignee })
         });
         const json = await resp.json();
-        if (!json.success) return alert(json.message || '发布需求失败');
+        if (!json.success) return alert(json.message || '发布帖子失败');
         await refreshAll();
     } catch (err) {
-        alert('网络错误，发布需求失败');
+        alert('网络错误，发布帖子失败');
     }
 }
 

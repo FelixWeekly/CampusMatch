@@ -149,7 +149,7 @@ function labelChipHtml(label, selected, onClick) {
     const bg = selected ? '#dbeafe' : '#f8fafc';
     const color = selected ? '#1d4ed8' : '#334155';
     const border = selected ? '#93c5fd' : '#cbd5e1';
-    return `<button type="button" onclick="${onClick}" style="width:auto; padding:6px 10px; border-radius:999px; border:1px solid ${border}; background:${bg}; color:${color}; font-size:12px; cursor:pointer;"># ${label}</button>`;
+    return `<button type="button" onclick="${onClick}" style="height:28px; line-height:normal; width:auto; padding:0 12px; border-radius:999px; border:1px solid ${border}; background:${bg}; color:${color}; font-size:12px; font-family:inherit; cursor:pointer; box-sizing:border-box; margin:0; outline:none; text-align:center; vertical-align:middle;"># ${label}</button>`;
 }
 
 function renderLabelPickers() {
@@ -165,18 +165,19 @@ function renderLabelPickers() {
                     type="text"
                     id="post-custom-label"
                     maxlength="12"
-                    placeholder="输入自定义标签"
+                    placeholder="在此输入"
                     oninput="syncCustomLabelInputWidth()"
-                    style="width:108px; min-width:108px; max-width:320px; padding:6px 10px; margin:0; border-radius:999px; border:1px solid #93c5fd; box-sizing:border-box; font-size:12px; line-height:1.2; background:#dbeafe; color:#1d4ed8; transition:width .16s ease;"
+                    style="height:28px; line-height:normal; width:80px; min-width:80px; max-width:320px; padding:0 12px; border-radius:999px; border:1px solid #93c5fd; background:#dbeafe; color:#1d4ed8; font-size:12px; font-family:inherit; box-sizing:border-box; margin:0 !important; margin-bottom:0 !important; outline:none; transition:width .16s ease; text-align:center; vertical-align:middle;"
                 />
+                <span id="custom-label-limit-warning" style="font-size:12px; color:#ef4444; display:none; margin-left:4px; line-height:28px;">输入内容已达上限</span>
             `;
         }
         postBox.innerHTML = chips;
         if (selectedPostLabel === '自定义') {
             const input = document.getElementById('post-custom-label');
             if (input) input.value = currentValue;
+            syncCustomLabelInputWidth();
         }
-        syncCustomLabelInputWidth();
     }
 }
 
@@ -197,8 +198,17 @@ function syncCustomLabelInputWidth() {
     const placeholder = customLabelInput.placeholder || '';
     const measureText = raw.length ? raw : placeholder;
     const textWidth = measureChipInputWidth(measureText);
-    const dynamicWidth = Math.max(108, Math.min(320, textWidth + 32));
+    const dynamicWidth = Math.max(80, Math.min(320, textWidth + 32));
     customLabelInput.style.width = `${dynamicWidth}px`;
+    
+    const warningEl = document.getElementById('custom-label-limit-warning');
+    if (warningEl) {
+        if (raw.length >= 12) {
+            warningEl.style.display = 'inline';
+        } else {
+            warningEl.style.display = 'none';
+        }
+    }
 }
 
 function togglePostLabel(label) {
@@ -417,7 +427,7 @@ function renderPosts() {
     const postsToRender = postsExpanded ? filtered : filtered.slice(0, postsPreviewLimit);
 
     postsToRender.forEach(post => {
-        const isMyPost = (post.author === currentUser);
+        const isMyPost = String(post.author || '').trim().toLowerCase() === String(currentUser || '').trim().toLowerCase();
         const labels = normalizePostLabels(post);
         const primaryLabel = labels[0] || post.type || '';
         
@@ -1169,11 +1179,11 @@ function renderSimpleHomeFlow(projectsCount) {
             <span style="font-size:12px; color:#64748b;">重协作项目 ${projectsCount}</span>
         </div>
         <div style="display:flex; gap:8px; flex-wrap:wrap; margin-bottom:10px;">
-            <span style="font-size:12px; background:#ecfeff; color:#155e75; padding:4px 8px; border-radius:999px;">发布需求</span>
-            <span style="font-size:12px; background:#eff6ff; color:#1d4ed8; padding:4px 8px; border-radius:999px;">人员组成</span>
-            <span style="font-size:12px; background:#f0fdf4; color:#166534; padding:4px 8px; border-radius:999px;">日常打卡防放鸽子</span>
+            <span style="font-size:12px; background:#ecfeff; color:#155e75; padding:4px 8px; border-radius:999px;">发布帖子</span>
+            <span style="font-size:12px; background:#eff6ff; color:#1d4ed8; padding:4px 8px; border-radius:999px;">协作贴</span>
+            <span style="font-size:12px; background:#f0fdf4; color:#166534; padding:4px 8px; border-radius:999px;">成员调整</span>
         </div>
-        <div style="font-size:13px; color:#475569; line-height:1.6;">只有你参与了开启项目管理的项目，才会展示下方项目管理界面。</div>
+        <div style="font-size:13px; color:#475569; line-height:1.6;">只有你参与了开启项目管理的项目，才会展示下方项目管理界面，需求和协作贴都像发帖一样直接。</div>
     `;
 }
 
@@ -1314,11 +1324,11 @@ async function loadProjectPreviews() {
 
 function openFullTeamCenter(projectId) {
     if (projectId) {
-        window.location.href = `team_management.html?project=${projectId}`;
+        window.location.href = `team_management.html?project=${projectId}&view=issues`;
         return;
     }
     if (activeProjectId) {
-        window.location.href = `team_management.html?project=${activeProjectId}`;
+        window.location.href = `team_management.html?project=${activeProjectId}&view=issues`;
         return;
     }
     alert('当前没有开启项目管理的重协作项目，先发布并开启项目管理后再进入。');
@@ -1332,11 +1342,11 @@ async function loadRecommendations() {
     container.innerHTML = '<p style="text-align:center; color:#9ca3af; padding:16px;">正在计算推荐...</p>';
 
     try {
-        let resp = await fetch(`http://localhost:3000/api/recommendations-ai?user=${encodeURIComponent(currentUser)}&limit=6`);
+        let resp = await fetch(`http://localhost:3000/api/recommendations-ai?user=${encodeURIComponent(currentUser)}&limit=2`);
         let data = await resp.json();
 
         if (!data.success) {
-            resp = await fetch(`http://localhost:3000/api/recommendations?user=${encodeURIComponent(currentUser)}&limit=6`);
+            resp = await fetch(`http://localhost:3000/api/recommendations?user=${encodeURIComponent(currentUser)}&limit=2`);
             data = await resp.json();
         }
         if (!data.success) {
@@ -1344,13 +1354,18 @@ async function loadRecommendations() {
             return;
         }
 
+        const fallbackNote = data.fallback && data.message
+            ? `<p style="text-align:center; color:#64748b; font-size:12px; margin:0 0 10px;">${data.message}</p>`
+            : '';
+
         const items = data.data || [];
         if (!items.length) {
-            container.innerHTML = '<p style="color:#6b7280; text-align:center; padding:12px;">当前没有符合条件的推荐，先完善个人画像或发布更多帖子试试。</p>';
+            container.innerHTML = `${fallbackNote}<p style="color:#6b7280; text-align:center; padding:12px;">当前没有符合条件的推荐，先完善个人画像或发布更多帖子试试。</p>`;
             return;
         }
 
         container.innerHTML = `
+            ${fallbackNote}
             <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(220px, 1fr)); gap:10px;">
                 ${items.map((item) => {
                     const reasons = (item.recommendation_reasons || []).map((r) => `<div style="font-size:12px; color:#334155;">• ${r}</div>`).join('');
