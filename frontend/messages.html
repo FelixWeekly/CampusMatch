@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Messages - CampusMatch</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body class="dashboard-page-body">
+    <div class="cm-app-shell">
+        <aside class="cm-sidebar">
+            <a class="cm-brand" href="dashboard.html">
+                <span class="cm-brand-mark"><span class="material-symbols-outlined" style="font-variation-settings:'FILL' 1;">school</span></span>
+                <span>
+                    <span class="cm-brand-title">CampusMatch</span>
+                    <span class="cm-brand-subtitle">Academic Workspace</span>
+                </span>
+            </a>
+            <nav class="cm-nav" aria-label="Workspace">
+                <button class="cm-nav-link" type="button" onclick="window.location.href='dashboard.html'">
+                    <span class="material-symbols-outlined">dashboard</span> Dashboard
+                </button>
+                <button class="cm-nav-link" type="button" onclick="window.location.href='team_management.html'">
+                    <span class="material-symbols-outlined">account_tree</span> Projects
+                </button>
+                <button class="cm-nav-link" type="button" onclick="window.location.href='community.html'">
+                    <span class="material-symbols-outlined">groups</span> Community
+                </button>
+                <button class="cm-nav-link active" type="button">
+                    <span class="material-symbols-outlined">chat</span> Messages
+                </button>
+            </nav>
+            <div class="cm-sidebar-footer">
+                <button class="cm-nav-link" type="button" onclick="window.location.href='profile.html'">
+                    <span class="material-symbols-outlined">account_circle</span> Profile
+                </button>
+                <button class="cm-nav-link" type="button" onclick="localStorage.removeItem('currentUser'); window.location.href='index.html';">
+                    <span class="material-symbols-outlined">logout</span> Log out
+                </button>
+            </div>
+        </aside>
+
+        <main class="cm-main messages-main">
+            <section class="messages-list-panel">
+                <div class="messages-panel-head">
+                    <h1>Messages</h1>
+                    <button class="cm-button ghost" type="button" onclick="loadThreads()">
+                        <span class="material-symbols-outlined">refresh</span>
+                    </button>
+                </div>
+                <div class="messages-search">
+                    <span class="material-symbols-outlined">search</span>
+                    <input id="thread-search" type="search" placeholder="Search chats...">
+                </div>
+                <div class="messages-tabs">
+                    <button class="active" type="button" data-filter="user" onclick="setThreadFilter('user', this)">Users</button>
+                    <button type="button" data-filter="project" onclick="setThreadFilter('project', this)">Projects</button>
+                </div>
+                <div id="thread-list" class="thread-list">
+                    <p class="muted" style="padding:18px;">Loading chats...</p>
+                </div>
+            </section>
+
+            <section class="conversation-panel">
+                <header class="conversation-head">
+                    <div class="cm-avatar" id="conversation-avatar">U</div>
+                    <div>
+                        <h2 id="conversation-title">Select a chat</h2>
+                        <p id="conversation-status">Direct messages</p>
+                    </div>
+                </header>
+
+                <div id="conversation-history" class="conversation-history">
+                    <p class="muted" style="text-align:center;">Choose a conversation from the left.</p>
+                </div>
+
+                <div class="conversation-compose">
+                    <input id="message-input" type="text" placeholder="Type a message...">
+                    <button type="button" onclick="sendMessage()">
+                        <span class="material-symbols-outlined">send</span>
+                    </button>
+                </div>
+            </section>
+        </main>
+    </div>
+
+    <script src="messages.js"></script>
+</body>
+</html>

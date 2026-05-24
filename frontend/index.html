@@ -4,62 +4,101 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>CampusMatch</title>
-    <!-- 引入我们的 CSS 皮肤文件 -->
     <link rel="stylesheet" href="style.css">
 </head>
-<body>
+<body class="auth-page">
+    <main class="auth-shell">
+        <section class="auth-visual" aria-label="CampusMatch academic workspace">
+            <a class="cm-brand" href="index.html">
+                <span class="cm-brand-mark">
+                    <span class="material-symbols-outlined" style="font-variation-settings:'FILL' 1;">diversity_3</span>
+                </span>
+                <span>
+                    <span class="cm-brand-title">CampusMatch</span>
+                    <span class="cm-brand-subtitle">Academic Workspace</span>
+                </span>
+            </a>
 
-    <div class="auth-container">
-        <!-- 登录表单区 -->
-        <div id="login-box" class="form-box">
-            <h2>欢迎回来 👋</h2>
-            <p class="subtitle">登录校园捞人/任务平台</p>
-            
-            <input type="email" id="login-email" placeholder="请输入校园邮箱 (@xxx.edu.cn)">
-            <input type="password" id="login-password" placeholder="请输入密码">
-            
-            <button onclick="login()">登 录</button>
-            
-            <p class="switch-text">还没有账号？ <span onclick="switchForm('register')">点击注册</span> &nbsp;|&nbsp; <span onclick="switchForm('reset')">忘记密码？</span></p>
-        </div>
-
-        <!-- 注册表单区 (默认隐藏) -->
-        <div id="register-box" class="form-box hidden">
-            <h2>创建账号 🚀</h2>
-            <p class="subtitle">只需几步，开启校园互助之旅</p>
-            
-            <input type="text" id="reg-name" placeholder="你的昵称 / 姓名">
-            <input type="email" id="reg-email" placeholder="校园邮箱 (用于身份验证)">
-            <div style="display:flex; gap:10px; margin-bottom: 24px;">
-                <input type="text" id="reg-code" placeholder="验证码" style="margin-bottom:0 !important; flex:1;">
-                <button type="button" onclick="sendCode('reg-email')" style="width:auto; margin-top:0; padding:12px 16px; white-space:nowrap;">获取验证码</button>
+            <div class="auth-copy">
+                <span class="cm-chip success">Structured Collaboration</span>
+                <h1>Find the right teammate for serious campus work.</h1>
+                <p>Connect with classmates, publish needs, join projects, and keep academic collaboration moving in one focused workspace.</p>
+                <a href="https://github.com/FelixWeekly/CampusMatch" target="_blank" class="auth-github-link">Learn more <span class="material-symbols-outlined" style="font-size:14px;vertical-align:middle;">arrow_forward</span></a>
             </div>
-            <input type="password" id="reg-password" placeholder="设置密码">
-            
-            <button onclick="register()">注 册</button>
-            
-            <p class="switch-text">已有账号？ <span onclick="switchForm('login')">直接登录</span></p>
-        </div>
+        </section>
 
-        <!--找回密码表单区 (默认隐藏) -->
-        <div id="reset-box" class="form-box hidden">
-            <h2>重置密码 🔑</h2>
-            <p class="subtitle">通过邮箱验证重设你的密码</p>
-            
-            <input type="email" id="reset-email" placeholder="注册时的校园邮箱">
-            <div style="display:flex; gap:10px; margin-bottom: 24px;">
-                <input type="text" id="reset-code" placeholder="验证码" style="margin-bottom:0 !important; flex:1;">
-                <button type="button" onclick="sendCode('reset-email')" style="width:auto; margin-top:0; padding:12px 16px; white-space:nowrap;">获取验证码</button>
+        <section class="auth-main">
+            <div class="auth-container animate-spring">
+                <div class="auth-tabs" role="tablist" aria-label="Authentication">
+                    <button class="auth-tab active" type="button" onclick="switchForm('login')">Login</button>
+                    <button class="auth-tab" type="button" onclick="switchForm('register')">Register</button>
+                    <button class="auth-tab" type="button" onclick="switchForm('reset')">Reset</button>
+                </div>
+
+                <div id="login-box" class="form-box">
+                    <h2>Welcome back</h2>
+                    <p class="subtitle">Log in to continue your collaborations.</p>
+
+                    <div class="field-stack">
+                        <label class="form-label" for="login-email">Academic Email</label>
+                        <input type="email" id="login-email" placeholder="student@university.edu">
+                        <label class="form-label" for="login-password">Password</label>
+                        <input type="password" id="login-password" placeholder="Enter password">
+                        <button type="button" onclick="login()">
+                            Sign In to Workspace
+                            <span class="material-symbols-outlined">arrow_forward</span>
+                        </button>
+                    </div>
+
+                    <p class="switch-text">No account yet? <span onclick="switchForm('register')">Create one</span> · <span onclick="switchForm('reset')">Forgot password</span></p>
+                </div>
+
+                <div id="register-box" class="form-box hidden">
+                    <h2>Create account</h2>
+                    <p class="subtitle">Start with your campus identity.</p>
+
+                    <div class="field-stack">
+                        <label class="form-label" for="reg-name">Name</label>
+                        <input type="text" id="reg-name" placeholder="Your name or nickname">
+                        <label class="form-label" for="reg-email">Academic Email</label>
+                        <input type="email" id="reg-email" placeholder="student@university.edu">
+                        <label class="form-label" for="reg-code">Verification Code</label>
+                        <div class="field-with-button">
+                            <input type="text" id="reg-code" placeholder="Code">
+                            <button type="button" class="cm-button ghost" onclick="sendCode('reg-email')">Get Code</button>
+                        </div>
+                        <label class="form-label" for="reg-password">Password</label>
+                        <input type="password" id="reg-password" placeholder="Set password">
+                        <button type="button" onclick="register()">Create Workspace Account</button>
+                    </div>
+
+                    <p class="switch-text">Already have an account? <span onclick="switchForm('login')">Sign in</span></p>
+                </div>
+
+                <div id="reset-box" class="form-box hidden">
+                    <h2>Reset password</h2>
+                    <p class="subtitle">Verify your email and set a new password.</p>
+
+                    <div class="field-stack">
+                        <label class="form-label" for="reset-email">Academic Email</label>
+                        <input type="email" id="reset-email" placeholder="student@university.edu">
+                        <label class="form-label" for="reset-code">Verification Code</label>
+                        <div class="field-with-button">
+                            <input type="text" id="reset-code" placeholder="Code">
+                            <button type="button" class="cm-button ghost" onclick="sendCode('reset-email')">Get Code</button>
+                        </div>
+                        <label class="form-label" for="reset-password">New Password</label>
+                        <input type="password" id="reset-password" placeholder="New password">
+                        <button type="button" onclick="resetPassword()">Reset Password</button>
+                    </div>
+
+                    <p class="switch-text">Remembered it? <span onclick="switchForm('login')">Back to login</span></p>
+                </div>
             </div>
-            <input type="password" id="reset-password" placeholder="输入新密码">
-            
-            <button onclick="resetPassword()">重置密码</button>
-            
-            <p class="switch-text">想起密码了？ <span onclick="switchForm('login')">返回登录</span></p>
-        </div>
-    </div>
 
-    <!-- 引入我们的 JS 肌肉文件 (通常放在 body 的最后) -->
+        </section>
+    </main>
+
     <script src="app.js"></script>
 </body>
 </html>

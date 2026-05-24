@@ -3,189 +3,221 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Dashboard</title>
+    <title>CampusMatch Workspace</title>
     <link rel="stylesheet" href="style.css">
 </head>
 <body class="dashboard-page-body">
+    <div class="cm-app-shell">
+        <aside class="cm-sidebar">
+            <a class="cm-brand" href="dashboard.html">
+                <span class="cm-brand-mark"><span class="material-symbols-outlined" style="font-variation-settings:'FILL' 1;">school</span></span>
+                <span>
+                    <span class="cm-brand-title">CampusMatch</span>
+                    <span class="cm-brand-subtitle">Academic Workspace</span>
+                </span>
+            </a>
 
-    <div class="quick-sidebar" id="quick-sidebar">
-        <div class="quick-progress-line" id="quick-progress-line">
-            <div class="quick-progress-indicator" id="quick-progress-indicator"></div>
-        </div>
-        <button class="quick-nav-item" id="nav-top" onclick="scrollToSection('top')">
-            <span class="quick-nav-dot"></span>
-            <span class="quick-nav-text">顶部</span>
-        </button>
-        <button class="quick-nav-item" id="nav-posts" onclick="scrollToSection('posts')">
-            <span class="quick-nav-dot"></span>
-            <span class="quick-nav-text">帖子</span>
-        </button>
-        <button class="quick-nav-item" id="nav-team" onclick="scrollToSection('team')">
-            <span class="quick-nav-dot"></span>
-            <span class="quick-nav-text">协作</span>
-        </button>
-    </div>
+            <nav class="cm-nav" aria-label="Workspace">
+                <button class="cm-nav-link active" type="button" onclick="scrollToSection('top')">
+                    <span class="material-symbols-outlined">dashboard</span> Dashboard
+                </button>
+                <button class="cm-nav-link" type="button" onclick="window.location.href='team_management.html'">
+                    <span class="material-symbols-outlined">account_tree</span> Projects
+                </button>
+                <button class="cm-nav-link" type="button" onclick="window.location.href='community.html'">
+                    <span class="material-symbols-outlined">groups</span> Community
+                </button>
+                <button class="cm-nav-link" type="button" onclick="window.location.href='messages.html'">
+                    <span class="material-symbols-outlined">chat</span> Messages
+                </button>
+            </nav>
 
-    <div class="dashboard-container" id="top-section">
-        <div class="dash-header">
-            <h1 id="welcome-text">欢迎来到大厅</h1>
-            <div class="header-btns">
-                <button onclick="window.location.href='profile.html'" style="background-color: #f3f4f6; color: #374151; font-weight: bold; border: 1px solid #d1d5db; border-radius: 8px; padding: 10px 20px; cursor: pointer; transition: all 0.3s;">👤 我的主页</button>
-                <button class="btn-inbox" onclick="openInbox()">🔔 我的收件箱</button>
-                <button class="btn-logout" onclick="logout()">退出登录</button>
+            <div class="cm-sidebar-footer">
+                <button class="cm-nav-link" type="button" onclick="window.location.href='profile.html'">
+                    <span class="material-symbols-outlined">account_circle</span> Profile
+                </button>
+                <button class="cm-nav-link" type="button" onclick="logout()">
+                    <span class="material-symbols-outlined">logout</span> Log out
+                </button>
             </div>
-        </div>
+        </aside>
 
-        <div class="flow-guide-strip">
-            <button class="flow-guide-card" id="flow-top" onclick="scrollToSection('top')">
-                <span class="flow-guide-step">01</span>
-                <span class="flow-guide-title">发起需求</span>
-            </button>
-            <button class="flow-guide-card" id="flow-posts" onclick="scrollToSection('posts')">
-                <span class="flow-guide-step">02</span>
-                <span class="flow-guide-title">浏览帖子</span>
-            </button>
-            <button class="flow-guide-card" id="flow-team" onclick="scrollToSection('team')">
-                <span class="flow-guide-step">03</span>
-                <span class="flow-guide-title">协作管理</span>
-            </button>
-        </div>
-
-        <div class="publish-card">
-            <h2 style="font-size: 24px; color: #111827; margin-bottom: 24px; font-weight: 700;">发布</h2>
-            
-            <div style="margin-bottom:16px;">
-                <div style="font-size:13px; color:#6b7280; margin-bottom:8px;">选择标签</div>
-                <div id="post-label-picker" style="display:flex; gap:8px; flex-wrap:wrap; align-items:center;"></div>
-            </div>
-            
-            <input type="text" id="post-title" placeholder="一句话概括你的活动或需求">
-            
-            <textarea id="post-content" rows="4" placeholder="详细描述活动内容、时间、地点与协作方式"></textarea>
-
-            <div style="display:flex; gap:16px; margin-bottom:16px; flex-wrap:wrap; align-items:baseline;">
-                <div id="cross-campus-section">
-                    <input type="checkbox" id="post-cross-campus" style="width:18px; height:18px; cursor:pointer; accent-color:#3b82f6; margin:0; position:relative; top:3px;">
-                    <label for="post-cross-campus" style="color:#4b5563; font-size:15px; margin:0; cursor:pointer; flex-shrink:0;">接受跨校区合作</label>
+        <main class="cm-main">
+            <header class="cm-topbar">
+                <div>
+                    <h1 id="welcome-text">Welcome back</h1>
+                    <p>Here is your academic workspace for today.</p>
                 </div>
-                <div id="management-section">
-                    <input type="checkbox" id="post-requires-management" style="width:18px; height:18px; cursor:pointer; accent-color:#3b82f6; margin:0; position:relative; top:3px;">
-                    <label for="post-requires-management" style="color:#4b5563; font-size:15px; margin:0; cursor:pointer; flex-shrink:0;">开启项目管理</label>
+                <div class="header-btns">
+                    <button class="btn-inbox" type="button" onclick="openInbox()">
+                        <span class="material-symbols-outlined">notifications</span> Inbox
+                    </button>
                 </div>
-            </div>
+            </header>
 
-            <div style="display:flex; gap:16px; margin-bottom:16px; flex-wrap:wrap; align-items:baseline;">
-                <div id="compensation-section">
-                <input type="checkbox" id="post-compensation" style="width:18px; height:18px; cursor:pointer; accent-color:#3b82f6; margin:0; position:relative; top:3px;">
-                <label for="post-compensation" style="color:#4b5563; font-size:15px; margin:0; cursor:pointer; flex-shrink:0;">这个任务有报酬</label>
-                
-                <input type="text" id="post-amount" placeholder="金额" style="width:150px; padding:10px 12px; border:1px solid #d1d5db; border-radius:6px; font-size:14px; background-color:#f9fafb; display:none;" />
-            </div>
-            </div>
-            
-            <div class="publish-actions">
-                <button class="btn-publish" onclick="createPost()">发 布</button>
-            </div>
-        </div>
-
-        <div id="recommendation-section" style="margin-top:30px; background:#fff; border:1px solid #e5e7eb; border-radius:14px; padding:20px 18px; box-shadow:0 1px 2px rgba(0,0,0,0.04);">
-            <div style="display:flex; justify-content:space-between; align-items:center; gap:12px; flex-wrap:wrap; margin-bottom:10px;">
-                <h2 style="margin:0; color:#111827; font-size:20px;">为你推荐</h2>
-                <button onclick="loadRecommendations()" style="width:auto; padding:8px 12px; background:#eff6ff; color:#1d4ed8; border:1px solid #bfdbfe; border-radius:8px; font-size:13px;">刷新推荐</button>
-            </div>
-            <div id="recommendation-container">
-                <p style="text-align:center; color:#9ca3af; padding:16px;">正在计算推荐...</p>
-            </div>
-        </div>
-
-        <div id="posts-section" style="margin-top:34px; padding-top:22px; border-top:1px solid #eef2f7;">
-        <div style="display:flex; justify-content:space-between; align-items:center; gap:12px; margin-bottom: 12px; flex-wrap: wrap;">
-            <h2 style="color: #111827; margin:0; font-size: 22px;">最新帖子 📋</h2>
-            <button id="toggle-posts-btn" onclick="togglePostsSection()" style="width:auto; padding:8px 12px; background:#eef2ff; color:#3730a3; border:1px solid #c7d2fe; border-radius:8px; font-size:13px;">收起帖子列表</button>
-        </div>
-        <div id="posts-section-body">
-        <div style="display:flex; gap:10px; align-items:flex-start; margin-bottom:18px; flex-wrap:wrap;">
-            <input id="filter-text" type="search" placeholder="检索你感兴趣的内容" style="flex:1; padding:10px; border-radius:8px; border:1px solid #e5e7eb; height:40px; box-sizing:border-box; font-size:14px; line-height:1.4;" />
-            <select id="filter-scope" style="width:160px; padding:10px; border-radius:8px; border:1px solid #e5e7eb; height:40px; box-sizing:border-box; font-size:14px; line-height:1.4;">
-                <option value="all">范围: 全部帖子</option>
-                <option value="mine">范围: 我的帖子</option>
-            </select>
-            <select id="filter-compensation" style="width:160px; padding:10px; border-radius:8px; border:1px solid #e5e7eb; height:40px; box-sizing:border-box; font-size:14px; line-height:1.4;">
-                <option value="all">酬金: 全部</option>
-                <option value="paid">酬金: 有酬金</option>
-                <option value="unpaid">酬金: 无酬金</option>
-            </select>
-            <select id="sort-by" style="width:160px; padding:10px; border-radius:8px; border:1px solid #e5e7eb; height:40px; box-sizing:border-box; font-size:14px; line-height:1.4;">
-                <option value="newest">排序: 最新发布</option>
-                <option value="popular">排序: 热度优先</option>
-            </select>
-            <button onclick="clearFilters()" style="padding:10px 10px; border-radius:8px; background:transparent; border:1px dashed #d1d5db; color:#6b7280; height:40px; box-sizing:border-box; font-size:13px; line-height:1.4;">清除筛选</button>
-        </div>
-
-        <div id="posts-container">
-            <p style="text-align:center; color:#9ca3af; padding: 40px;">正在加载帖子...</p>
-        </div>
-        <div id="posts-more-wrap" style="display:flex; justify-content:center; margin-top:12px;"></div>
-        </div>
-        </div>
-
-        <div class="team-center" id="team-center-section">
-            <div class="team-center-header" style="margin-bottom:18px;">
-                <h2 style="margin:0; font-size:22px; color:#111827;">项目流程</h2>
-                <div style="display:flex; gap:8px; align-items:center;">
-                    <button class="btn-inbox" style="padding:8px 14px;" onclick="loadProjectPreviews()">刷新</button>
+            <div class="dashboard-container" id="top-section">
+                <div class="flow-guide-strip">
+                    <button class="flow-guide-card" id="flow-top" onclick="scrollToSection('top')">
+                        <span class="flow-guide-step">01</span>
+                        <span class="flow-guide-title">Create Request</span>
+                    </button>
+                    <button class="flow-guide-card" id="flow-posts" onclick="scrollToSection('posts')">
+                        <span class="flow-guide-step">02</span>
+                        <span class="flow-guide-title">Browse Matches</span>
+                    </button>
+                    <button class="flow-guide-card" id="flow-team" onclick="scrollToSection('team')">
+                        <span class="flow-guide-step">03</span>
+                        <span class="flow-guide-title">Manage Work</span>
+                    </button>
                 </div>
-            </div>
-            <div id="simple-flow-panel" class="project-detail-panel" style="margin-bottom:14px; background:#fff;"></div>
 
-            <div class="team-center-grid" id="team-management-grid">
-                <div class="project-list-panel">
-                    <h3 style="margin:0 0 12px 0; font-size:16px;">我参与的重协作项目</h3>
-                    <div id="my-projects-list">
-                        <p style="color:#9ca3af; font-size:14px;">暂无项目记录</p>
+                <section class="publish-card">
+                    <div class="cm-section-head">
+                        <div>
+                            <span class="cm-eyebrow">New Collaboration</span>
+                            <h2>Post an opportunity</h2>
+                        </div>
                     </div>
-                </div>
 
-                <div class="project-detail-panel" id="project-detail-panel">
-                    <p style="color:#9ca3af; font-size:14px;">选择左侧项目后，这里会展示轻量流程预览与快速操作。</p>
-                </div>
+                    <div class="field-stack">
+                        <label class="form-label">Tags</label>
+                        <div id="post-label-picker" style="display:flex; gap:8px; flex-wrap:wrap; align-items:center;"></div>
+
+                        <label class="form-label" for="post-title">Project Title</label>
+                        <input type="text" id="post-title" placeholder="e.g., AI Climate Research">
+
+                        <label class="form-label" for="post-content">Details</label>
+                        <textarea id="post-content" rows="4" placeholder="Describe what you are working on and who you are looking for..."></textarea>
+
+                        <div class="publish-checkboxes">
+                            <label><input type="checkbox" id="post-requires-management"> 开启项目管理</label>
+                            <label><input type="checkbox" id="post-compensation"> 是否有报酬</label>
+                            <input type="text" id="post-amount" placeholder="金额" style="max-width:120px; display:none;">
+                            <label><input type="checkbox" id="post-cross-campus"> 接受跨校区合作</label>
+                        </div>
+
+                        <div class="publish-actions">
+                            <button class="btn-publish" type="button" onclick="createPost()">
+                                <span class="material-symbols-outlined">send</span> Post
+                            </button>
+                        </div>
+                    </div>
+                </section>
+
+                <section id="recommendation-section" class="cm-section">
+                    <div class="cm-section-head">
+                        <div>
+                            <span class="cm-eyebrow">AI Recommended</span>
+                            <h2>Recommended for you</h2>
+                        </div>
+                        <button type="button" class="cm-button ghost" onclick="loadRecommendations()">
+                            <span class="material-symbols-outlined">refresh</span> Refresh
+                        </button>
+                    </div>
+                    <div id="recommendation-container">
+                        <p class="muted" style="text-align:center; padding:16px;">正在计算推荐...</p>
+                    </div>
+                </section>
+
+                <section id="posts-section" class="cm-section">
+                    <div class="cm-section-head">
+                        <div>
+                            <span class="cm-eyebrow">Latest Opportunities</span>
+                            <h2>Campus posts</h2>
+                        </div>
+                        <button id="toggle-posts-btn" class="cm-button ghost" type="button" onclick="togglePostsSection()">Collapse list</button>
+                    </div>
+
+                    <div id="posts-section-body">
+                        <div class="header-btns" style="margin:14px 0 18px;">
+                            <input id="filter-text" type="search" placeholder="Search opportunities" style="flex:1; min-width:220px;">
+                            <select id="filter-scope" style="max-width:170px;">
+                                <option value="all">Scope: All</option>
+                                <option value="mine">Scope: Mine</option>
+                            </select>
+                            <select id="filter-compensation" style="max-width:170px;">
+                                <option value="all">Pay: All</option>
+                                <option value="paid">Pay: Paid</option>
+                                <option value="unpaid">Pay: Free</option>
+                            </select>
+                            <select id="sort-by" style="max-width:170px;">
+                                <option value="newest">Sort: Newest</option>
+                                <option value="popular">Sort: Popular</option>
+                            </select>
+                            <button class="cm-button ghost" type="button" onclick="clearFilters()">Clear</button>
+                        </div>
+
+                        <div id="posts-container">
+                            <p class="muted" style="text-align:center; padding:40px;">正在加载帖子...</p>
+                        </div>
+                        <div id="posts-more-wrap" style="display:flex; justify-content:center; margin-top:12px;"></div>
+                    </div>
+                </section>
+
+                <section class="team-center" id="team-center-section">
+                    <div class="team-center-header">
+                        <div>
+                            <span class="cm-eyebrow">Active Projects</span>
+                            <h2>Project workflow</h2>
+                        </div>
+                        <button class="cm-button ghost" type="button" onclick="loadProjectPreviews()">
+                            <span class="material-symbols-outlined">refresh</span> Refresh
+                        </button>
+                    </div>
+
+                    <div id="simple-flow-panel" class="project-detail-panel"></div>
+
+                    <div class="team-center-grid" id="team-management-grid">
+                        <div class="project-list-panel">
+                            <h3>My managed collaborations</h3>
+                            <div id="my-projects-list">
+                                <p class="muted">暂无项目记录</p>
+                            </div>
+                        </div>
+
+                        <div class="project-detail-panel" id="project-detail-panel">
+                            <p class="muted">选择左侧项目后，这里会展示流程预览与快速操作。</p>
+                        </div>
+                    </div>
+                </section>
             </div>
-        </div>
-
+        </main>
     </div>
 
-    <aside class="right-center-entry" id="right-community-entry" onclick="window.location.href='community.html'" aria-label="社区">
-        <span class="right-center-title">社区</span>
-    </aside>
-
-    <aside class="right-center-entry" id="right-center-entry" onclick="openFullTeamCenter()" aria-label="项目管理" style="display:none;">
-        <span class="right-center-icon">◍</span>
-        <span class="right-center-title">项目管理</span>
-    </aside>
-
-    <div id="inbox-modal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); justify-content: center; align-items: center;">
-        <div style="background: white; padding: 30px; border-radius: 12px; width: 90%; max-width: 500px; max-height: 80vh; overflow-y: auto;">
-            <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #e5e7eb; padding-bottom: 10px; margin-bottom: 15px;">
-                <h2 style="margin: 0;">🔔 我的收件箱</h2>
-                <button onclick="closeInbox()" style="background: none; border: none; color: #9ca3af; font-size: 24px; cursor: pointer; width: auto; padding: 0;">&times;</button>
-            </div>
-
-            <div id="inbox-messages">
-                <p>加载中...</p>
-            </div>
+    <!-- Right-side Inbox Panel -->
+    <div class="cm-side-panel-overlay" id="inbox-overlay" onclick="closeInbox()"></div>
+    <div class="cm-side-panel" id="inbox-panel">
+        <div class="cm-side-panel-header">
+            <h2>Inbox</h2>
+            <button onclick="closeInbox()" class="cm-button ghost" type="button">&times;</button>
+        </div>
+        <div class="cm-side-panel-body" id="inbox-messages">
+            <p class="inbox-empty">Loading...</p>
         </div>
     </div>
 
-    <div id="chat-modal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.5); justify-content:center; align-items:center; z-index:100;">
-        <div style="background:white; width:90%; max-width:560px; border-radius:12px; max-height:80vh; overflow:hidden; display:flex; flex-direction:column;">
-            <div style="padding:14px 18px; border-bottom:1px solid #e5e7eb; display:flex; justify-content:space-between; align-items:center; gap:16px;">
-                <strong id="chat-with" style="flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">聊天</strong>
-                <button onclick="closeChat()" style="background:none;border:none;font-size:20px;cursor:pointer;color:#9ca3af;padding:0;width:auto;flex-shrink:0;">&times;</button>
+    <!-- Right-side Application Detail Panel -->
+    <div class="cm-side-panel" id="inbox-detail-panel">
+        <div class="cm-side-panel-header">
+            <button onclick="closeInboxDetail()" class="cm-button ghost" type="button">
+                <span class="material-symbols-outlined">arrow_back</span> Back
+            </button>
+            <button onclick="closeInbox()" class="cm-button ghost" type="button">&times;</button>
+        </div>
+        <div class="cm-side-panel-body" id="inbox-detail-content">
+        </div>
+    </div>
+
+    <div id="chat-modal" style="display:none;">
+        <div style="display:flex; flex-direction:column;">
+            <div class="cm-section-head" style="padding:14px 18px; border-bottom:1px solid rgba(194,198,214,.42);">
+                <strong id="chat-with">聊天</strong>
+                <button onclick="closeChat()" class="cm-button ghost" type="button">&times;</button>
             </div>
-            <div id="chat-history" style="padding:16px; overflow:auto; flex:1; background:#f9fafb;"></div>
-            <div style="padding:12px; border-top:1px solid #e5e7eb;">
-                <input id="chat-input" type="text" placeholder="输入私信..." style="width:100%; padding:10px; border-radius:8px; border:1px solid #e5e7eb; box-sizing:border-box; margin-bottom:8px;" />
-                <button onclick="sendChatMessage()" style="width:100%; padding:10px; border-radius:8px; background:#3b82f6; color:#fff; border:none; cursor:pointer; font-size:14px; font-weight:bold; box-sizing:border-box;">发送</button>
+            <div id="chat-history" style="padding:16px; overflow:auto; flex:1; background:var(--surface-container-low);"></div>
+            <div style="padding:12px; border-top:1px solid rgba(194,198,214,.42);">
+                <input id="chat-input" type="text" placeholder="输入私信...">
+                <button onclick="sendChatMessage()" style="width:100%; margin-top:8px;" type="button">Send</button>
             </div>
         </div>
     </div>

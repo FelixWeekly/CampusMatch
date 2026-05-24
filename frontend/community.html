@@ -3,74 +3,133 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Community</title>
+    <title>Community Plaza - CampusMatch</title>
     <link rel="stylesheet" href="style.css">
 </head>
 <body class="dashboard-page-body">
-    <div class="dashboard-container" style="max-width:980px;">
-        <div class="dash-header">
-            <h1 id="community-welcome">社区</h1>
-            <div class="header-btns">
-                <button onclick="window.location.href='dashboard.html'" style="background-color:#f3f4f6; color:#374151; border:1px solid #d1d5db; border-radius:8px; padding:10px 16px; width:auto;">返回大厅</button>
-                <button class="btn-inbox" onclick="refreshCommunityData()" style="width:auto;">刷新</button>
+    <div class="cm-app-shell">
+        <aside class="cm-sidebar">
+            <a class="cm-brand" href="dashboard.html">
+                <span class="cm-brand-mark"><span class="material-symbols-outlined" style="font-variation-settings:'FILL' 1;">school</span></span>
+                <span>
+                    <span class="cm-brand-title">CampusMatch</span>
+                    <span class="cm-brand-subtitle">Academic Workspace</span>
+                </span>
+            </a>
+            <nav class="cm-nav" aria-label="Workspace">
+                <button class="cm-nav-link" type="button" onclick="window.location.href='dashboard.html'">
+                    <span class="material-symbols-outlined">dashboard</span> Dashboard
+                </button>
+                <button class="cm-nav-link" type="button" onclick="window.location.href='team_management.html'">
+                    <span class="material-symbols-outlined">account_tree</span> Projects
+                </button>
+                <button class="cm-nav-link active" type="button">
+                    <span class="material-symbols-outlined">groups</span> Community
+                </button>
+                <button class="cm-nav-link" type="button" onclick="window.location.href='messages.html'">
+                    <span class="material-symbols-outlined">chat</span> Messages
+                </button>
+            </nav>
+            <div class="cm-sidebar-footer">
+                <button class="cm-nav-link" type="button" onclick="window.location.href='profile.html'">
+                    <span class="material-symbols-outlined">account_circle</span> Profile
+                </button>
+                <button class="cm-nav-link" type="button" onclick="localStorage.removeItem('currentUser'); window.location.href='index.html';">
+                    <span class="material-symbols-outlined">logout</span> Log out
+                </button>
             </div>
-        </div>
+        </aside>
 
-        <div class="team-center" style="margin-top:0;">
-            <div class="team-center-header">
-                <h2 style="margin:0; font-size:22px; color:#111827;">随手发帖、一触即达</h2>
-            </div>
-            <p style="margin: 10px 0 18px 0; color:#6b7280; font-size:14px;">欢迎讨论与交流</p>
-
-            <div style="display:grid; grid-template-columns: minmax(260px, 320px) 1fr; gap:14px; margin-bottom:16px;">
-                <div class="project-list-panel" style="background:#fff;">
-                    <h3 style="margin:0 0 10px 0; font-size:16px;">新建圈子</h3>
-                    <input id="circle-name" type="text" placeholder="名称" style="margin:0 0 8px 0; padding:9px;" />
-                    <textarea id="circle-desc" rows="3" placeholder="圈子简介（必填）" style="width:100%; border:1px solid #e5e7eb; border-radius:8px; padding:9px; font-size:13px; margin-bottom:8px;"></textarea>
-                    <button onclick="createCircleProposal()" style="width:auto; padding:8px 12px; font-size:13px;">发起公示</button>
-                    <div id="circle-proposals-container" style="margin-top:12px; max-height:260px; overflow:auto; border-top:1px dashed #e5e7eb; padding-top:10px;"></div>
-                    <h4 style="margin:12px 0 8px 0; font-size:14px; color:#374151;">已开通圈子</h4>
-                    <div id="circles-container" style="max-height:200px; overflow:auto;"></div>
+        <main class="cm-main">
+            <header class="cm-topbar">
+                <div>
+                    <h1 id="community-welcome">Community Plaza</h1>
+                    <p>Share updates, discover circles, and connect with peers.</p>
                 </div>
+                <div class="header-btns">
+                    <button class="cm-button ghost" type="button" onclick="refreshCommunityData()">
+                        <span class="material-symbols-outlined">refresh</span> Refresh
+                    </button>
+                </div>
+            </header>
 
-                <div class="project-detail-panel" style="background:#fff;">
-                    <h3 style="margin:0 0 10px 0; font-size:16px;">发帖</h3>
-                    <div style="display:grid; grid-template-columns: 180px 1fr; gap:8px; margin-bottom:8px;">
-                        <select id="community-post-circle" style="padding:9px; border:1px solid #e5e7eb; border-radius:8px; font-size:13px;">
-                            <option value="">全站公开（不归属圈子）</option>
-                        </select>
-                        <input id="community-post-project" type="number" min="1" placeholder="关联项目ID（可选）" style="margin:0; padding:9px;" />
+            <div class="dashboard-container">
+                <div class="community-layout">
+                    <!-- Feed Column -->
+                    <div class="community-feed">
+                        <!-- Post Composer -->
+                        <div class="cm-glass-card">
+                            <div class="community-composer">
+                                <div class="cm-composer-avatar">
+                                    <span class="material-symbols-outlined">person</span>
+                                </div>
+                                <div class="cm-composer-input" onclick="toggleComposer()" id="composer-trigger">
+                                    <span class="cm-composer-placeholder">Share an update, paper, or thought...</span>
+                                    <span class="material-symbols-outlined" style="color:var(--outline);">share</span>
+                                </div>
+                            </div>
+
+                            <!-- Expanded Composer Form -->
+                            <div class="community-composer-form" id="community-composer-form">
+                                <div class="field-stack">
+                                    <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px;">
+                                        <select id="community-post-circle">
+                                            <option value="">Public post</option>
+                                        </select>
+                                        <select id="community-post-project">
+                                            <option value="">Link to project (optional)</option>
+                                        </select>
+                                    </div>
+                                    <input id="community-post-title" type="text" placeholder="Post title">
+                                    <textarea id="community-post-content" rows="4" placeholder="What's on your mind?"></textarea>
+                                    <div style="display:flex; justify-content:flex-end; gap:8px;">
+                                        <button type="button" class="cm-button ghost" onclick="toggleComposer()">Cancel</button>
+                                        <button type="button" class="btn-publish" onclick="createCommunityPost()">
+                                            <span class="material-symbols-outlined">send</span> Publish
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Feed Posts -->
+                        <div id="community-posts-container">
+                            <p class="cm-muted-message">Loading community content...</p>
+                        </div>
+
                     </div>
-                    <input id="community-post-title" type="text" placeholder="标题" style="margin:0 0 8px 0; padding:10px;" />
-                    <textarea id="community-post-content" rows="5" placeholder="畅所欲言" style="width:100%; border:1px solid #e5e7eb; border-radius:8px; padding:10px; font-size:14px; margin-bottom:8px;"></textarea>
-                    <button onclick="createCommunityPost()" style="width:auto; padding:8px 12px; font-size:13px;">发布</button>
+
+                    <!-- Right Sidebar -->
+                    <div class="community-sidebar">
+                        <!-- Circle Discovery entry -->
+                        <div class="cm-sidebar-card" style="text-align:center;">
+                            <span class="material-symbols-outlined" style="font-size:40px;color:var(--primary);display:block;margin-bottom:8px;">groups</span>
+                            <h3 style="margin-bottom:6px;">Circle Discovery</h3>
+                            <p style="font-size:13px;color:var(--on-surface-variant);margin-bottom:14px;">Browse active circles, support proposals, and join the conversation.</p>
+                            <button class="cm-button" onclick="window.location.href='circles.html'" style="width:100%;">
+                                <span class="material-symbols-outlined">explore</span> Explore Circles
+                            </button>
+                        </div>
+
+                        <!-- Community Recommendations -->
+                        <div class="cm-sidebar-card">
+                            <h3>Recommended for you</h3>
+                            <div id="community-recommendation-container">
+                                <span class="cm-muted-message">Calculating...</span>
+                            </div>
+                        </div>
+
+                        <!-- Trending Topics -->
+                        <div class="cm-sidebar-card">
+                            <h3>Trending Topics</h3>
+                            <div id="community-trending-container">
+                                <p class="cm-muted-message">Loading trends...</p>
+                            </div>
+                        </div>
+                    </div>
                 </div>
             </div>
-
-            <div style="margin-bottom:14px; border:1px solid #e5e7eb; border-radius:10px; padding:10px; background:#fff;">
-                <strong style="font-size:16px; color:#1f2937;">为你推荐</strong>
-                <div id="community-recommendation-container" style="margin-top:8px; color:#64748b; font-size:13px;">正在计算社区推荐...</div>
-            </div>
-
-            <div style="display:flex; justify-content:space-between; align-items:center; gap:8px; flex-wrap:wrap; margin-bottom:10px;">
-                <strong style="font-size:16px; color:#1f2937;">动态流</strong>
-            </div>
-            <div id="community-posts-container">
-                <p style="text-align:center; color:#9ca3af; padding:14px;">社区内容加载中...</p>
-            </div>
-
-            <div id="community-comment-panel" style="display:none; margin-top:12px; border:1px solid #e5e7eb; border-radius:10px; padding:10px; background:#fff;">
-                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
-                    <strong id="community-comment-title" style="font-size:14px; color:#111827;">评论</strong>
-                    <button onclick="closeCommunityComments()" style="width:auto; padding:4px 8px; font-size:12px; background:#f3f4f6; color:#374151;">收起</button>
-                </div>
-                <div id="community-comments-list" style="max-height:220px; overflow:auto; border:1px solid #f1f5f9; border-radius:8px; padding:8px; margin-bottom:8px;"></div>
-                <div style="display:flex; gap:8px;">
-                    <input id="community-comment-input" type="text" placeholder="写下你的看法..." style="flex:1; margin:0; padding:9px;" />
-                    <button onclick="submitCommunityComment()" style="width:auto; padding:8px 12px; font-size:12px;">发送评论</button>
-                </div>
-            </div>
-        </div>
+        </main>
     </div>
 
     <script src="community.js"></script>

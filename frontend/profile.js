@@ -18,6 +18,21 @@ window.onload = function() {
         window.location.href = 'index.html';
         return;
     }
+    // 只有查看自己主页时可以换头像
+    const isOwnProfile = viewingUser === currentUser;
+    const wrapper = document.getElementById('avatar-wrapper');
+    if (wrapper) {
+        if (isOwnProfile) {
+            wrapper.classList.add('is-owner');
+            wrapper.style.cursor = 'pointer';
+            wrapper.title = '点击更换头像';
+            wrapper.onclick = function() { document.getElementById('avatar-file-input').click(); };
+        } else {
+            wrapper.style.cursor = 'default';
+            wrapper.title = '';
+            wrapper.onclick = null;
+        }
+    }
     fetchProfileData();
 };
 
@@ -31,7 +46,11 @@ async function fetchProfileData() {
             // 1. 渲染左侧个人资料
             const u = data.data;
             document.getElementById('display-name').innerText = u.name;
-            document.getElementById('avatar-text').innerText = u.name.charAt(0); // 取名字首字母当头像
+            // 默认头像：名字首字母
+            const avatarIcon = document.getElementById('avatar-icon');
+            if (avatarIcon) avatarIcon.textContent = (u.name || '?').charAt(0).toUpperCase();
+            // 加载头像
+            loadUserAvatar(u.name);
             document.getElementById('display-dept-grade').innerText = `${u.department} · ${u.grade}`;
             document.getElementById('display-campus-hours').innerText = `校区: ${u.campus || '未设置'}`;
             document.getElementById('display-bio').innerText = u.bio;
@@ -81,17 +100,23 @@ async function fetchProfileData() {
             // 2. 动态决定显示什么按钮
             const btnContainer = document.getElementById('action-btn-container');
             if (viewingUser === currentUser) {
-                // 自己看自己：编辑按钮，并预填数据到模态框里
-                btnContainer.innerHTML = `<button onclick="openEditModal()" style="width: 100%; background: #111827; color: white; padding: 12px; border-radius: 8px; font-weight: bold;">✍️ 编辑个人资料</button>`;
+                document.getElementById('btn-back-profile').style.display = 'none';
+                const delBtn = document.getElementById('btn-delete-account');
+                if (delBtn) delBtn.style.display = '';
+                btnContainer.innerHTML = `<button onclick="openEditModal()" style="width: 100%; background: var(--primary); color: var(--on-primary); padding: 12px; border-radius: var(--radius-sm); font-weight: 800;">Edit Profile</button>`;
                 document.getElementById('edit-dept').value = u.department === '未设置院系' ? '' : u.department;
                 document.getElementById('edit-grade').value = u.grade === '未设置年级' ? '' : u.grade;
                 document.getElementById('edit-campus').value = u.campus || '沙河校区';
                 document.getElementById('edit-bio').value = u.bio === '这个人很懒，还没写自我介绍~' ? '' : u.bio;
                 document.getElementById('edit-portfolio').value = u.portfolio;
             } else {
-                // 看别人：仅保留私信按钮，评分入口统一迁移到项目结项后
+                document.getElementById('btn-back-profile').style.display = '';
+                const delBtn2 = document.getElementById('btn-delete-account');
+                if (delBtn2) delBtn2.style.display = 'none';
                 btnContainer.innerHTML = `
-                    <button onclick="openChatWithUser('${viewingUser}')" style="width: 100%; background: #3b82f6; color: white; padding: 12px; border-radius: 8px; font-weight: bold;">💬 发私信</button>
+                    <button onclick="window.location.href='messages.html?user=${encodeURIComponent(viewingUser)}'" style="width: 100%; background: var(--primary); color: var(--on-primary); padding: 12px; border-radius: var(--radius-sm); font-weight: 800;">
+                        <span class="material-symbols-outlined" style="vertical-align:middle; font-size:18px;">send</span> Send Message
+                    </button>
                 `;
             }
 
@@ -190,110 +215,106 @@ async function saveProfile() {
     } catch (err) { alert('保存失败！'); }
 }
 
-// ===== 私聊功能 =====
-function openChatWithUser(withUser) {
-    document.getElementById('chat-with').innerText = `与 ${withUser} 的聊天`;
-    document.getElementById('chat-modal').style.display = 'flex';
-    document.getElementById('chat-history').innerHTML = '<p style="color:#9ca3af; text-align:center;">正在加载对话...</p>';
-    window._chatTarget = withUser;
-    fetchConversation(withUser);
-    
-    // 为输入框绑定事件监听器（延迟一帧确保 DOM 已准备好）
-    setTimeout(() => {
-        const chatInput = document.getElementById('chat-input');
-        if (!chatInput) {
-            console.error('chat-input 元素未找到');
-            return;
-        }
-        
-        chatInput.focus();
-        
-        // 移除旧的事件监听（防止重复绑定）
-        chatInput.removeEventListener('keydown', handleChatInputKeyDown);
-        
-        // 绑定按键事件（回车发送）
-        chatInput.addEventListener('keydown', handleChatInputKeyDown);
-    }, 0);
+// Private messaging → navigate to messages.html?user= (see send message button in fetchProfileData)
+
+/* ── Account Deletion ── */
+function openDeleteAccount() {
+    document.getElementById('delete-overlay').style.display = 'block';
+    document.body.style.overflow = 'hidden';
 }
 
-function closeChat() {
-    document.getElementById('chat-modal').style.display = 'none';
-    document.getElementById('chat-history').innerHTML = '';
-    window._chatTarget = null;
+function closeDeleteAccount() {
+    document.getElementById('delete-overlay').style.display = 'none';
+    document.body.style.overflow = '';
 }
 
-async function fetchConversation(withUser) {
-    try {
-        const resp = await fetch(`http://localhost:3000/api/conversation?user=${currentUser}&with=${withUser}`);
-        const j = await resp.json();
-        const h = document.getElementById('chat-history');
-        if (!j.success) {
-            h.innerHTML = '<p style="color:#ef4444; text-align:center;">无法加载对话</p>';
-            return;
-        }
-        h.innerHTML = '';
-        (j.data || []).forEach(m => {
-            const side = (m.sender === currentUser) ? 'right' : 'left';
-            const msgEl = document.createElement('div');
-            msgEl.style.margin = '8px 0';
-            msgEl.style.display = 'flex';
-            msgEl.style.justifyContent = side === 'right' ? 'flex-end' : 'flex-start';
-            msgEl.innerHTML = `<div style="background:${side==='right'? '#3b82f6':'#ffffff'}; color:${side==='right'?'#fff':'#111827'}; padding:10px 12px; border-radius:12px; max-width:75%; border:1px solid #e5e7eb;">${m.message}</div>`;
-            h.appendChild(msgEl);
-        });
-        h.scrollTop = h.scrollHeight;
-    } catch (err) {
-        document.getElementById('chat-history').innerHTML = '<p style="color:#ef4444; text-align:center;">网络错误，无法加载对话</p>';
+function toggleDeleteBtn() {
+    const checked = document.getElementById('delete-confirm')?.checked;
+    const btn = document.getElementById('btn-delete-confirm');
+    if (!btn) return;
+    if (checked) {
+        btn.disabled = false;
+        btn.style.opacity = '1';
+        btn.style.cursor = 'pointer';
+    } else {
+        btn.disabled = true;
+        btn.style.opacity = '0.4';
+        btn.style.cursor = 'default';
     }
 }
 
-async function sendChatMessage() {
-    const input = document.getElementById('chat-input');
-    const text = (input.value || '').trim();
-    if (!text) return;
-    
-    // 防止重复发送
-    if (window._isSending) return;
-    window._isSending = true;
-    
-    const to = window._chatTarget;
-    if (!to) {
-        window._isSending = false;
-        return alert('目标用户缺失');
-    }
+async function submitDeleteAccount() {
+    const user = localStorage.getItem('currentUser');
+    if (!user) return;
+    const confirmed = document.getElementById('delete-confirm')?.checked;
+    if (!confirmed) return alert('Please confirm you understand this is irreversible.');
+
+    const checkboxes = document.querySelectorAll('#delete-overlay input[type="checkbox"]:checked');
+    const reasons = [];
+    checkboxes.forEach((cb) => { if (cb.id !== 'delete-confirm') reasons.push(cb.value); });
+    const feedback = document.getElementById('delete-feedback')?.value?.trim() || '';
 
     try {
-        const resp = await fetch('http://localhost:3000/api/messages', {
-            method: 'POST', headers: {'Content-Type':'application/json'},
-            body: JSON.stringify({ sender: currentUser, recipient: to, message: text })
+        const resp = await fetch('http://localhost:3000/api/account', {
+            method: 'DELETE',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ user, reason: reasons.join(', '), feedback })
         });
-        const j = await resp.json();
-        if (j.success) {
-            input.value = '';
-            const h = document.getElementById('chat-history');
-            const msgEl = document.createElement('div');
-            msgEl.style.margin = '8px 0';
-            msgEl.style.display = 'flex';
-            msgEl.style.justifyContent = 'flex-end';
-            msgEl.innerHTML = `<div style="background:#3b82f6; color:#fff; padding:10px 12px; border-radius:12px; max-width:75%;">${text}</div>`;
-            h.appendChild(msgEl);
-            h.scrollTop = h.scrollHeight;
-            input.focus();
+        const json = await resp.json();
+        if (json.success) {
+            alert('Your account has been deleted. Goodbye!');
+            localStorage.removeItem('currentUser');
+            window.location.href = 'index.html';
         } else {
-            alert('发送失败：' + j.message);
+            alert(json.message || 'Deletion failed');
         }
-    } catch (err) {
-        alert('网络错误，发送失败');
-    } finally {
-        window._isSending = false;
+    } catch (_) {
+        alert('Network error. Please try again.');
     }
 }
 
-// 处理回车发送的函数
-function handleChatInputKeyDown(e) {
-    if (e.key === 'Enter' && !e.shiftKey) {
-        e.preventDefault();
-        e.stopPropagation();
-        sendChatMessage();
-    }
+async function loadUserAvatar(userName) {
+    try {
+        const resp = await fetch('http://localhost:3000/api/users/avatar/' + encodeURIComponent(userName));
+        const json = await resp.json();
+        const img = document.getElementById('avatar-img');
+        const icon = document.getElementById('avatar-icon');
+        if (json.success && json.avatar && img) {
+            img.src = json.avatar;
+            img.style.display = '';
+            if (icon) icon.style.display = 'none';
+        } else {
+            // 无头像时显示首字母（已在fetchProfileData中设置）
+            if (img) img.style.display = 'none';
+            if (icon) icon.style.display = '';
+        }
+    } catch (_) {}
+}
+
+function uploadAvatar(event) {
+    const file = event.target.files && event.target.files[0];
+    if (!file) return;
+    if (file.size > 256 * 1024) return alert('Image must be under 256KB');
+
+    const reader = new FileReader();
+    reader.onload = async function() {
+        const currentUser = localStorage.getItem('currentUser');
+        try {
+            const resp = await fetch('http://localhost:3000/api/users/avatar', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ user: currentUser, avatar: reader.result })
+            });
+            const json = await resp.json();
+            if (json.success) {
+                const img = document.getElementById('avatar-img');
+                const icon = document.getElementById('avatar-icon');
+                if (img) { img.src = reader.result; img.style.display = ''; }
+                if (icon) icon.style.display = 'none';
+            } else {
+                alert(json.message || 'Upload failed');
+            }
+        } catch (_) { alert('Network error'); }
+    };
+    reader.readAsDataURL(file);
 }

@@ -7,13 +7,12 @@ window.onload = function() {
     }
 
     const welcome = document.getElementById('community-welcome');
-    if (welcome) welcome.innerText = `🧭 社区广场 · ${currentUser}`;
+    if (welcome) welcome.innerText = `Community Plaza`;
     refreshCommunityData();
+    loadTrendingTopics();
 };
 
 let communityCircles = [];
-let activeCommunityCommentPostId = null;
-let activeCommunityCommentPostTitle = '';
 
 function communityEscape(value) {
     return String(value || '')
@@ -24,164 +23,74 @@ function communityEscape(value) {
         .replace(/'/g, '&#39;');
 }
 
-async function refreshCommunityData() {
-    await loadCircles();
-    await loadCircleProposals();
-    await loadCommunityRecommendations();
-    await loadCommunityPosts();
+function initAvatars() {
+    var els = document.querySelectorAll('.cm-avatar-sm[data-user]');
+    for (var i = 0; i < els.length; i++) {
+        var el = els[i];
+        var user = el.getAttribute('data-user');
+        if (!user) continue;
+        var img = document.createElement('img');
+        img.src = 'http://localhost:3000/api/users/avatar/' + user + '/raw';
+        img.onerror = function() { this.remove(); };
+        el.insertBefore(img, el.firstChild);
+    }
 }
 
-async function loadCircles() {
-    const currentUser = localStorage.getItem('currentUser');
-    const circlesBox = document.getElementById('circles-container');
-    const postCircleSelect = document.getElementById('community-post-circle');
-    if (!circlesBox || !postCircleSelect) return;
+/* Toggle the post composer expanded form */
+function toggleComposer() {
+    const form = document.getElementById('community-composer-form');
+    const trigger = document.getElementById('composer-trigger');
+    if (!form || !trigger) return;
+    const isExpanded = form.classList.contains('expanded');
+    if (isExpanded) {
+        form.classList.remove('expanded');
+        trigger.style.display = '';
+    } else {
+        form.classList.add('expanded');
+        trigger.style.display = 'none';
+        document.getElementById('community-post-title')?.focus();
+    }
+}
 
-    circlesBox.innerHTML = '<p style="font-size:12px; color:#9ca3af;">圈子加载中...</p>';
+async function refreshCommunityData() {
+    await loadCircleOptions();
+    await loadCommunityRecommendations();
+    await loadCommunityPosts();
+    await loadProjectOptions();
+}
+
+async function loadProjectOptions() {
+    const currentUser = localStorage.getItem('currentUser');
+    const select = document.getElementById('community-post-project');
+    if (!select) return;
+    try {
+        const resp = await fetch(`http://localhost:3000/api/my-projects?user=${encodeURIComponent(currentUser || '')}`);
+        const json = await resp.json();
+        select.innerHTML = '<option value="">Link to project (optional)</option>';
+        if (json.success && json.data) {
+            json.data.forEach((p) => {
+                select.innerHTML += `<option value="${p.id}">${communityEscape(p.title || 'Untitled')}</option>`;
+            });
+        }
+    } catch (_) {}
+}
+
+async function loadCircleOptions() {
+    const currentUser = localStorage.getItem('currentUser');
+    const postCircleSelect = document.getElementById('community-post-circle');
+    if (!postCircleSelect) return;
 
     try {
         const response = await fetch(`http://localhost:3000/api/circles?user=${encodeURIComponent(currentUser || '')}`);
         const data = await response.json();
-        if (!data.success) {
-            circlesBox.innerHTML = `<p style="font-size:12px; color:#ef4444;">${data.message || '圈子加载失败'}</p>`;
-            return;
+        if (data.success) {
+            communityCircles = data.data || [];
+            postCircleSelect.innerHTML = '<option value="">Public post (no circle)</option>';
+            communityCircles.forEach((circle) => {
+                postCircleSelect.innerHTML += `<option value="${circle.id}">${communityEscape(circle.name)}</option>`;
+            });
         }
-
-        communityCircles = data.data || [];
-        postCircleSelect.innerHTML = '<option value="">全站公开（不归属圈子）</option>';
-        communityCircles.forEach((circle) => {
-            postCircleSelect.innerHTML += `<option value="${circle.id}">${communityEscape(circle.name)}</option>`;
-        });
-
-        if (!communityCircles.length) {
-            circlesBox.innerHTML = '<p style="font-size:12px; color:#9ca3af;">暂无圈子，先通过公示开一个吧。</p>';
-            return;
-        }
-
-        circlesBox.innerHTML = communityCircles.map((circle) => {
-            const joined = !!circle.joined;
-            return `
-                <div style="border:1px solid #e5e7eb; border-radius:8px; padding:8px; margin-bottom:8px; background:#f8fafc;">
-                    <div style="display:flex; justify-content:space-between; gap:8px; align-items:flex-start; margin-bottom:4px;">
-                        <strong style="font-size:13px; color:#111827;">${communityEscape(circle.name)}</strong>
-                        <span style="font-size:11px; color:#64748b;">成员 ${circle.member_count || 0}</span>
-                    </div>
-                    <div style="font-size:12px; color:#6b7280; margin-bottom:6px; line-height:1.5;">${communityEscape(circle.description || '暂无简介')}</div>
-                    <button onclick="toggleCircleJoin(${circle.id}, ${joined ? 'true' : 'false'})" style="width:auto; padding:5px 10px; font-size:12px; background:${joined ? '#fef2f2' : '#ecfeff'}; color:${joined ? '#b91c1c' : '#155e75'}; border:1px solid ${joined ? '#fecaca' : '#a5f3fc'};">
-                        ${joined ? '退出圈子' : '加入圈子'}
-                    </button>
-                </div>
-            `;
-        }).join('');
-    } catch (err) {
-        circlesBox.innerHTML = '<p style="font-size:12px; color:#ef4444;">网络错误，圈子加载失败</p>';
-    }
-}
-
-async function loadCircleProposals() {
-    const currentUser = localStorage.getItem('currentUser');
-    const box = document.getElementById('circle-proposals-container');
-    if (!box) return;
-
-    box.innerHTML = '<p style="font-size:12px; color:#9ca3af;">公示加载中...</p>';
-
-    try {
-        const response = await fetch(`http://localhost:3000/api/circle-proposals?user=${encodeURIComponent(currentUser || '')}&limit=40`);
-        const data = await response.json();
-        if (!data.success) {
-            box.innerHTML = `<p style="font-size:12px; color:#ef4444;">${data.message || '公示加载失败'}</p>`;
-            return;
-        }
-
-        const proposals = data.data || [];
-        if (!proposals.length) {
-            box.innerHTML = '<p style="font-size:12px; color:#9ca3af;">暂无公示提案。</p>';
-            return;
-        }
-
-        box.innerHTML = proposals.map((proposal) => {
-            const pending = proposal.status === 'pending';
-            const canSupport = pending && !proposal.supported_by_me;
-            const statusText = pending ? '公示中' : (proposal.status === 'approved' ? '已开通' : (proposal.status === 'expired' ? '已过期' : '已结束'));
-
-            return `
-                <div style="border:1px solid #e5e7eb; border-radius:8px; padding:8px; margin-bottom:8px; background:#f8fafc;">
-                    <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:8px; margin-bottom:4px;">
-                        <strong style="font-size:13px; color:#111827;">${communityEscape(proposal.name)}</strong>
-                        <span style="font-size:11px; color:${pending ? '#0f766e' : '#64748b'};">${statusText}</span>
-                    </div>
-                    <div style="font-size:12px; color:#6b7280; margin-bottom:6px; line-height:1.5;">${communityEscape(proposal.description)}</div>
-                    <div style="font-size:11px; color:#475569; margin-bottom:6px;">支持 ${proposal.support_count || 0}/${proposal.threshold || 10}${proposal.public_until ? ` · 截止 ${communityEscape(proposal.public_until)}` : ''}</div>
-                    ${canSupport ? `<button onclick="supportCircleProposal(${proposal.id})" style="width:auto; padding:5px 10px; font-size:12px; background:#ecfeff; color:#155e75; border:1px solid #a5f3fc;">支持开圈</button>` : ''}
-                </div>
-            `;
-        }).join('');
-    } catch (err) {
-        box.innerHTML = '<p style="font-size:12px; color:#ef4444;">网络错误，公示加载失败</p>';
-    }
-}
-
-async function createCircleProposal() {
-    const currentUser = localStorage.getItem('currentUser');
-    const name = document.getElementById('circle-name')?.value?.trim() || '';
-    const description = document.getElementById('circle-desc')?.value?.trim() || '';
-    if (!name) return alert('请输入圈子名');
-    if (!description) return alert('圈子简介为必填');
-
-    try {
-        const response = await fetch('http://localhost:3000/api/circles', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ creator: currentUser, name, description })
-        });
-        const data = await response.json();
-        if (!data.success) return alert(data.message || '发起公示失败');
-
-        document.getElementById('circle-name').value = '';
-        document.getElementById('circle-desc').value = '';
-        await loadCircleProposals();
-        alert(data.message || '已进入公示');
-    } catch (err) {
-        alert('网络错误，发起公示失败');
-    }
-}
-
-async function supportCircleProposal(proposalId) {
-    const currentUser = localStorage.getItem('currentUser');
-    try {
-        const response = await fetch(`http://localhost:3000/api/circle-proposals/${proposalId}/support`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ user: currentUser })
-        });
-        const data = await response.json();
-        if (!data.success) return alert(data.message || '支持失败');
-
-        await loadCircleProposals();
-        await loadCircles();
-        await loadCommunityRecommendations();
-        alert(data.message || '支持成功');
-    } catch (err) {
-        alert('网络错误，支持失败');
-    }
-}
-
-async function toggleCircleJoin(circleId, joined) {
-    const currentUser = localStorage.getItem('currentUser');
-    try {
-        const response = await fetch(`http://localhost:3000/api/circles/${circleId}/join`, {
-            method: joined ? 'DELETE' : 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ user: currentUser })
-        });
-        const data = await response.json();
-        if (!data.success) return alert(data.message || '操作失败');
-        await loadCircles();
-        await loadCommunityRecommendations();
-        await loadCommunityPosts();
-    } catch (err) {
-        alert('网络错误，圈子操作失败');
-    }
+    } catch (_) {}
 }
 
 async function createCommunityPost() {
@@ -211,6 +120,7 @@ async function createCommunityPost() {
         document.getElementById('community-post-project').value = '';
         document.getElementById('community-post-title').value = '';
         document.getElementById('community-post-content').value = '';
+        toggleComposer();
         await loadCommunityRecommendations();
         await loadCommunityPosts();
         alert('发布成功');
@@ -224,47 +134,79 @@ async function loadCommunityPosts() {
     const container = document.getElementById('community-posts-container');
     if (!container) return;
 
-    container.innerHTML = '<p style="text-align:center; color:#9ca3af; padding:14px;">社区内容加载中...</p>';
+    container.innerHTML = '<p class="cm-muted-message">Loading feed...</p>';
 
     try {
         const query = new URLSearchParams({ user: currentUser || '', limit: '30' });
         const response = await fetch(`http://localhost:3000/api/community/posts?${query.toString()}`);
         const data = await response.json();
         if (!data.success) {
-            container.innerHTML = `<p style="text-align:center; color:#ef4444;">${data.message || '社区加载失败'}</p>`;
+            container.innerHTML = `<p class="cm-error-message">${data.message || '社区加载失败'}</p>`;
             return;
         }
 
         const posts = data.data || [];
         if (!posts.length) {
-            container.innerHTML = '<p style="text-align:center; color:#9ca3af; padding:14px;">暂无内容，发一条试试。</p>';
+            container.innerHTML = '<p class="cm-muted-message">No posts yet. Be the first to share!</p>';
             return;
         }
 
+        const curUser = localStorage.getItem('currentUser');
         container.innerHTML = posts.map((post) => {
+            const initials = (post.author || '?').charAt(0).toUpperCase();
+            const liked = post.liked_by_me ? ' liked' : '';
+            const isOwn = post.author === curUser;
+            const projectEmbed = post.project_id
+                ? `<div class="cm-feed-card-project" onclick="window.location.href='team_management.html?project=${post.project_id}'">
+                    <span class="material-symbols-outlined" style="color:var(--secondary);">account_tree</span>
+                    <span style="font-size:12px;font-weight:700;">Associated Project</span>
+                   </div>`
+                : '';
+
             return `
-                <div class="post-card" style="padding:16px; margin-bottom:10px;">
-                    <div style="display:flex; justify-content:space-between; gap:8px; align-items:flex-start; margin-bottom:6px; flex-wrap:wrap;">
-                        <strong style="font-size:16px; color:#111827;">${communityEscape(post.title)}</strong>
+                <article class="cm-feed-card">
+                    <div class="cm-feed-card-header">
+                        <div class="cm-feed-card-author">
+                            <span class="cm-avatar-sm" data-user="${encodeURIComponent(post.author || '')}">${initials}</span>
+                            <div class="cm-feed-card-meta">
+                                <a href="profile.html?user=${encodeURIComponent(post.author || '')}" style="color:var(--on-surface);text-decoration:none;font-weight:700;">${communityEscape(post.author)}</a>
+                                <span class="cm-feed-card-info">
+                                    ${post.circle_name ? `in ${communityEscape(post.circle_name)}` : 'Public'} · ${communityEscape(post.created_at || '')}
+                                </span>
+                            </div>
+                        </div>
+                        ${isOwn ? `<button onclick="deleteCommunityPost(${post.id})" class="cm-feed-action" style="color:var(--error);margin-left:auto;" title="Delete">✕</button>` : ''}
                     </div>
-                    <div style="font-size:12px; color:#64748b; margin-bottom:8px;">作者 ${communityEscape(post.author)}${post.circle_name ? ` · 圈子 ${communityEscape(post.circle_name)}` : ' · 全站公开'} · ${communityEscape(post.created_at || '')}</div>
-                    <div style="font-size:14px; color:#374151; line-height:1.65; margin-bottom:10px;">${communityEscape(post.content).replace(/\n/g, '<br>')}</div>
-                    <div style="display:flex; justify-content:space-between; align-items:center; gap:8px; flex-wrap:wrap;">
-                        <div style="font-size:12px; color:#6b7280;">👍 ${post.likes_count || 0} · 💬 ${post.comments_count || 0} · 👀 ${post.views || 0}</div>
-                        <div style="display:flex; gap:8px;">
-                            <button onclick="toggleCommunityLike(${post.id})" style="width:auto; padding:6px 10px; font-size:12px; background:${post.liked_by_me ? '#fee2e2' : '#ecfeff'}; color:${post.liked_by_me ? '#b91c1c' : '#155e75'}; border:1px solid ${post.liked_by_me ? '#fecaca' : '#a5f3fc'};">${post.liked_by_me ? '取消点赞' : '点赞'}</button>
-                            <button onclick="openCommunityComments(${post.id}, '${encodeURIComponent(String(post.title || ''))}')" style="width:auto; padding:6px 10px; font-size:12px; background:#eef2ff; color:#3730a3; border:1px solid #c7d2fe;">评论</button>
+                    <div class="cm-feed-card-title">${communityEscape(post.title)}</div>
+                    <div class="cm-feed-card-body">${communityEscape(post.content).replace(/\n/g, '<br>')}</div>
+                    ${projectEmbed}
+                    <div class="cm-feed-card-actions">
+                        <button onclick="toggleCommunityLike(${post.id})" class="cm-feed-action${liked}">
+                            <span class="material-symbols-outlined">thumb_up</span>
+                            ${post.likes_count || 0}
+                        </button>
+                        <button onclick="toggleInlineComments(${post.id})" class="cm-feed-action">
+                            <span class="material-symbols-outlined">chat_bubble</span>
+                            ${post.comments_count || 0} Comments
+                        </button>
+                    </div>
+                    <div class="cm-inline-comments" id="inline-comments-${post.id}" style="display:none; border-top:1px solid rgba(194,198,214,.3); margin-top:12px; padding-top:12px;">
+                        <div class="cm-inline-comments-list" id="inline-list-${post.id}"></div>
+                        <div style="display:flex; gap:8px; margin-top:8px;">
+                            <input id="inline-input-${post.id}" type="text" placeholder="Write a comment..." style="flex:1; padding:6px 10px; border:1px solid rgba(194,198,214,.4); border-radius:8px; font:inherit; font-size:13px;" onkeydown="if(event.key==='Enter')submitInlineComment(${post.id})">
+                            <button onclick="submitInlineComment(${post.id})" class="cm-button" style="font-size:12px; padding:6px 14px;">Send</button>
                         </div>
                     </div>
-                </div>
+                </article>
             `;
         }).join('');
 
         posts.forEach((post) => {
             fetch(`http://localhost:3000/api/community/posts/${post.id}/view`, { method: 'PUT' }).catch(() => {});
         });
+        initAvatars();
     } catch (err) {
-        container.innerHTML = '<p style="text-align:center; color:#ef4444;">网络错误，社区加载失败</p>';
+        container.innerHTML = '<p class="cm-error-message">Network error loading feed</p>';
     }
 }
 
@@ -273,31 +215,72 @@ async function loadCommunityRecommendations() {
     const container = document.getElementById('community-recommendation-container');
     if (!container) return;
 
-    container.innerHTML = '正在计算社区推荐...';
+    container.innerHTML = '<span class="cm-muted-message">Calculating...</span>';
 
     try {
-        const response = await fetch(`http://localhost:3000/api/community/recommendations?user=${encodeURIComponent(currentUser)}&limit=2`);
+        const response = await fetch(`http://localhost:3000/api/circles/recommendations?user=${encodeURIComponent(currentUser)}&limit=3`);
         const data = await response.json();
-        if (!data.success) {
-            container.innerHTML = `<span style="color:#ef4444;">${data.message || '推荐加载失败'}</span>`;
+        if (!data.success || !data.data || !data.data.length) {
+            container.innerHTML = '<span class="cm-muted-message">No circle recommendations yet</span>';
             return;
         }
 
-        const recPosts = ((data.data && data.data.posts) ? data.data.posts : []).slice(0, 2);
-        const recCircles = (data.data && data.data.circles) ? data.data.circles : [];
-
-        const circlesHtml = recCircles.length
-            ? `<div style="margin-bottom:8px;"><strong style="font-size:13px; color:#1f2937;">推荐圈子</strong><div style="display:flex; gap:6px; flex-wrap:wrap; margin-top:6px;">${recCircles.map((circle) => `<span style="font-size:12px; background:#ecfeff; color:#155e75; padding:4px 8px; border-radius:999px;">${communityEscape(circle.name)} · ${circle.recommendation_score}</span>`).join('')}</div></div>`
-            : '';
-
-        const postsHtml = recPosts.length
-            ? `<div><strong style="font-size:13px; color:#1f2937;">推荐帖子</strong><div style="margin-top:6px; display:flex; flex-direction:column; gap:6px;">${recPosts.map((post) => `<div style="font-size:12px; color:#334155;">• ${communityEscape(post.title)}${post.recommendation_reasons && post.recommendation_reasons.length ? `（${communityEscape(post.recommendation_reasons.join('，'))}）` : ''}</div>`).join('')}</div></div>`
-            : '';
-
-        container.innerHTML = circlesHtml + postsHtml || '<span style="color:#9ca3af;">暂无推荐</span>';
+        container.innerHTML = data.data.map((circle) => {
+            const tags = (circle.matched_tags || []).slice(0, 3).map(t => communityEscape(t)).join(', ');
+            return `
+                <div class="cm-rec-post-item" style="cursor:pointer;padding:8px 0;" onclick="window.location.href='circle.html?id=${circle.id}'">
+                    <strong>${communityEscape(circle.name)}</strong>
+                    <div style="font-size:12px;color:var(--on-surface-variant);">${communityEscape((circle.description || '').slice(0, 60))}</div>
+                    ${tags ? `<div style="font-size:11px;color:var(--primary);margin-top:2px;">匹配: ${tags}</div>` : ''}
+                </div>
+            `;
+        }).join('');
     } catch (err) {
-        container.innerHTML = '<span style="color:#ef4444;">网络错误，推荐加载失败</span>';
+        container.innerHTML = '<span class="cm-error-message">Network error</span>';
     }
+}
+
+/* Trending topics from backend tag aggregation */
+async function loadTrendingTopics() {
+    const container = document.getElementById('community-trending-container');
+    if (!container) return;
+
+    try {
+        const response = await fetch('http://localhost:3000/api/trending-topics?limit=3');
+        const data = await response.json();
+        if (!data.success || !data.data || !data.data.length) {
+            container.innerHTML = '<p class="cm-muted-message">No trends yet</p>';
+            return;
+        }
+
+        const sorted = data.data;
+
+        // 3级红色渐变：hot → warm → mild
+        const heatColors = ['#dc2626', '#ef4444', '#f97316'];
+        container.innerHTML = sorted.map((item, i) => `
+            <div class="cm-trending-item" style="display:flex;align-items:center;gap:10px;padding:6px 0;">
+                <span class="material-symbols-outlined" style="font-size:22px; color:${heatColors[i] || '#f97316'}; font-variation-settings:'FILL' 1;">local_fire_department</span>
+                <span class="cm-trending-tag" style="font-weight:700; color:${heatColors[i] || '#f97316'};">${communityEscape(item.tag)}</span>
+            </div>
+        `).join('');
+    } catch (_) {
+        container.innerHTML = '<p class="cm-muted-message">Trends unavailable</p>';
+    }
+}
+
+async function deleteCommunityPost(postId) {
+    if (!confirm('Delete this post?')) return;
+    const currentUser = localStorage.getItem('currentUser');
+    try {
+        const resp = await fetch('http://localhost:3000/api/community/posts/' + postId, {
+            method: 'DELETE',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ user: currentUser })
+        });
+        const data = await resp.json();
+        if (data.success) loadCommunityPosts();
+        else alert(data.message || 'Failed');
+    } catch (_) { alert('Network error'); }
 }
 
 async function toggleCommunityLike(postId) {
@@ -316,78 +299,52 @@ async function toggleCommunityLike(postId) {
     }
 }
 
-async function openCommunityComments(postId, postTitle) {
-    activeCommunityCommentPostId = postId;
-    activeCommunityCommentPostTitle = postTitle ? decodeURIComponent(postTitle) : '';
-    const panel = document.getElementById('community-comment-panel');
-    const title = document.getElementById('community-comment-title');
-    if (panel) panel.style.display = 'block';
-    if (title) title.textContent = `评论：${String(activeCommunityCommentPostTitle).slice(0, 24)}`;
-    await loadCommunityComments();
-}
-
-function closeCommunityComments() {
-    activeCommunityCommentPostId = null;
-    activeCommunityCommentPostTitle = '';
-    const panel = document.getElementById('community-comment-panel');
-    const list = document.getElementById('community-comments-list');
-    const input = document.getElementById('community-comment-input');
-    if (panel) panel.style.display = 'none';
-    if (list) list.innerHTML = '';
-    if (input) input.value = '';
-}
-
-async function loadCommunityComments() {
-    const list = document.getElementById('community-comments-list');
-    if (!list || !activeCommunityCommentPostId) return;
-    list.innerHTML = '<p style="font-size:12px; color:#9ca3af;">评论加载中...</p>';
-
-    try {
-        const response = await fetch(`http://localhost:3000/api/community/posts/${activeCommunityCommentPostId}/comments?limit=80`);
-        const data = await response.json();
-        if (!data.success) {
-            list.innerHTML = `<p style="font-size:12px; color:#ef4444;">${data.message || '评论加载失败'}</p>`;
-            return;
-        }
-
-        const comments = data.data || [];
-        if (!comments.length) {
-            list.innerHTML = '<p style="font-size:12px; color:#9ca3af;">还没有评论，来抢沙发吧。</p>';
-            return;
-        }
-
-        list.innerHTML = comments.map((comment) => `
-            <div style="padding:6px 0; border-bottom:1px dashed #e5e7eb;">
-                <div style="font-size:12px; color:#334155; margin-bottom:2px;"><strong>${communityEscape(comment.author)}</strong> · ${communityEscape(comment.created_at || '')}</div>
-                <div style="font-size:13px; color:#475569; line-height:1.55;">${communityEscape(comment.content)}</div>
-            </div>
-        `).join('');
-    } catch (err) {
-        list.innerHTML = '<p style="font-size:12px; color:#ef4444;">网络错误，评论加载失败</p>';
+async function toggleInlineComments(postId) {
+    const container = document.getElementById('inline-comments-' + postId);
+    if (!container) return;
+    if (container.style.display !== 'none') {
+        container.style.display = 'none';
+    } else {
+        container.style.display = 'block';
+        await loadInlineComments(postId);
     }
 }
 
-async function submitCommunityComment() {
-    const currentUser = localStorage.getItem('currentUser');
-    const input = document.getElementById('community-comment-input');
-    const content = input?.value?.trim() || '';
-
-    if (!activeCommunityCommentPostId) return alert('请先打开一条社区帖的评论区');
-    if (!content) return alert('评论内容不能为空');
-
+async function loadInlineComments(postId) {
+    const list = document.getElementById('inline-list-' + postId);
+    if (!list) return;
+    list.innerHTML = '<p class="cm-muted-message">Loading...</p>';
     try {
-        const response = await fetch(`http://localhost:3000/api/community/posts/${activeCommunityCommentPostId}/comments`, {
+        const resp = await fetch('http://localhost:3000/api/community/posts/' + postId + '/comments?limit=80');
+        const data = await resp.json();
+        if (!data.success) { list.innerHTML = '<p class="cm-muted-message">Failed</p>'; return; }
+        const comments = data.data || [];
+        if (!comments.length) { list.innerHTML = '<p class="cm-muted-message">No comments yet</p>'; return; }
+        list.innerHTML = comments.map(c => `
+            <div style="padding:6px 0; border-bottom:1px solid rgba(194,198,214,.15);">
+                <strong>${communityEscape(c.author)}</strong>
+                <span style="font-size:12px;color:var(--outline);margin-left:6px;">${communityEscape(c.created_at || '')}</span>
+                <div style="margin-top:2px;">${communityEscape(c.content)}</div>
+            </div>
+        `).join('');
+    } catch (_) { list.innerHTML = '<p class="cm-muted-message">Error</p>'; }
+}
+
+async function submitInlineComment(postId) {
+    const currentUser = localStorage.getItem('currentUser');
+    const input = document.getElementById('inline-input-' + postId);
+    const content = (input?.value || '').trim();
+    if (!content) return;
+    try {
+        const resp = await fetch('http://localhost:3000/api/community/posts/' + postId + '/comments', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ author: currentUser, content })
         });
-        const data = await response.json();
-        if (!data.success) return alert(data.message || '评论失败');
-
-        input.value = '';
-        await loadCommunityComments();
-        await loadCommunityPosts();
-    } catch (err) {
-        alert('网络错误，评论失败');
-    }
+        const data = await resp.json();
+        if (data.success) {
+            if (input) input.value = '';
+            await loadInlineComments(postId);
+        } else { alert(data.message || 'Failed'); }
+    } catch (_) { alert('Network error'); }
 }

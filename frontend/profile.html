@@ -3,172 +3,220 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>个人主页 - CampusTasker</title>
+    <title>Profile - CampusMatch</title>
     <link rel="stylesheet" href="style.css">
-    <style>
-        body { 
-            margin: 0; 
-            padding: 0; 
-            background-color: #f9fafb; 
-            min-height: 100vh;
-            display: flex; 
-            flex-direction: column; 
-            align-items: center; 
-            position: relative; /* 为绝对定位提供参照物 */
-            overflow-x: hidden;
-        }
-
-        /* 🌟 真正的“悬浮左上角”返回按钮！绝对不挤占其他元素空间 */
-        .back-btn-custom {
-            position: absolute;
-            top: 20px;
-            left: 20px;
-            width: fit-content; /* 宽度仅包裹内容 */
-            padding: 8px 16px;
-            background-color: #000000;
-            border: 1px solid #dee2e6;
-            border-radius: 8px;
-            font-weight: 500;
-            cursor: pointer;
-            transition: background-color 0.2s; /* 变色动画 */
-            z-index: 1000;
-        }
-
-        .back-btn-custom:hover {
-            background-color: #e2e6ea; /* 鼠标移上去变深一点 */
-       }
-
-        /* 独立居中的标题 */
-        .profile-title {
-            margin-top: 40px;
-            margin-bottom: 20px;
-            font-size: 32px;
-            color: #111827;
-            text-align: center;
-        }
-
-        /* 卡片容器布局 */
-        .profile-container {
-            width: min(1000px, calc(100vw - 40px));
-            padding: 0 0 40px 0;
-            box-sizing: border-box;
-            display: grid; 
-            grid-template-columns: 1fr 2fr; 
-            gap: 30px; 
-            align-items: start;
-        }
-        
-        /* 左侧个人信息卡片 */
-        .info-card { background: white; padding: 40px 30px; border-radius: 16px; box-shadow: 0 4px 15px rgba(0,0,0,0.03); text-align: center; }
-        .avatar { width: 120px; height: 120px; background-color: #e5e7eb; border-radius: 50%; margin: 0 auto 20px; font-size: 50px; display: flex; align-items: center; justify-content: center; color: #9ca3af; }
-        .user-name { font-size: 26px; color: #111827; margin-bottom: 5px; }
-        .user-tags { color: #6b7280; font-size: 14px; margin-bottom: 20px; }
-        .user-bio { color: #4b5563; font-size: 15px; line-height: 1.6; margin-bottom: 20px; padding: 15px; background: #f9fafb; border-radius: 8px; text-align: left; }
-        .skills-container { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; margin-bottom: 20px; }
-        .skill-tag { background: #eff6ff; color: #2563eb; padding: 6px 14px; border-radius: 20px; font-size: 13px; font-weight: bold; }
-        .portfolio-link { display: inline-block; color: #10b981; text-decoration: none; font-weight: bold; font-size: 14px; margin-bottom: 20px; }
-        .portfolio-link:hover { text-decoration: underline; }
-
-        /* 右侧评价卡片 */
-        .reviews-card { background: white; padding: 30px; border-radius: 16px; box-shadow: 0 4px 15px rgba(0,0,0,0.03); }
-        .rating-header { display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid #e5e7eb; padding-bottom: 20px; margin-bottom: 20px; }
-        .average-score { font-size: 32px; font-weight: bold; color: #f59e0b; }
-        .review-item { padding: 15px 0; border-bottom: 1px dashed #e5e7eb; }
-        .review-item:last-child { border-bottom: none; }
-        .stars { color: #f59e0b; letter-spacing: 2px; }
-        .activity-board { margin-top: 18px; padding-top: 16px; border-top: 1px solid #eef2f7; }
-        .activity-grid { display:grid; grid-template-columns:1fr 1fr; gap:12px; }
-        .activity-col { background:#f8fafc; border:1px solid #e2e8f0; border-radius:10px; padding:12px; }
-        .activity-item { padding:8px 0; border-bottom:1px dashed #e5e7eb; }
-        .activity-item:last-child { border-bottom:none; }
-        @media (max-width: 920px) {
-            .profile-container { grid-template-columns: 1fr; }
-            .activity-grid { grid-template-columns: 1fr; }
-        }
-
-        /* 模态框通用样式 */
-        .modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); justify-content: center; align-items: center; z-index: 100; }
-        .modal-content { background: white; padding: 30px; border-radius: 16px; width: 90%; max-width: 500px; box-shadow: 0 10px 25px rgba(0,0,0,0.1); }
-        .modal-content input, .modal-content textarea, .modal-content select { width: 100%; padding: 14px; margin-bottom: 15px; border: 1px solid #d1d5db; border-radius: 8px; font-size: 15px; background-color: #f9fafb; }
-    </style>
 </head>
-<body>
+<body class="profile-page">
+    <div class="cm-app-shell">
+        <aside class="cm-sidebar">
+            <a class="cm-brand" href="dashboard.html">
+                <span class="cm-brand-mark"><span class="material-symbols-outlined" style="font-variation-settings:'FILL' 1;">school</span></span>
+                <span>
+                    <span class="cm-brand-title">CampusMatch</span>
+                    <span class="cm-brand-subtitle">Academic Workspace</span>
+                </span>
+            </a>
+            <nav class="cm-nav" aria-label="Workspace">
+                <button class="cm-nav-link" type="button" onclick="window.location.href='dashboard.html'">
+                    <span class="material-symbols-outlined">dashboard</span> Dashboard
+                </button>
+                <button class="cm-nav-link" type="button" onclick="window.location.href='team_management.html'">
+                    <span class="material-symbols-outlined">account_tree</span> Projects
+                </button>
+                <button class="cm-nav-link" type="button" onclick="window.location.href='community.html'">
+                    <span class="material-symbols-outlined">groups</span> Community
+                </button>
+                <button class="cm-nav-link" type="button" onclick="window.location.href='messages.html'">
+                    <span class="material-symbols-outlined">chat</span> Messages
+                </button>
+            </nav>
+            <div class="cm-sidebar-footer">
+                <button class="cm-nav-link active" type="button">
+                    <span class="material-symbols-outlined">account_circle</span> Profile
+                </button>
+                <button class="cm-nav-link" type="button" onclick="localStorage.removeItem('currentUser'); window.location.href='index.html';">
+                    <span class="material-symbols-outlined">logout</span> Log out
+                </button>
+            </div>
+        </aside>
 
-    <!-- 🌟 死死钉在屏幕左上角的悬浮返回键 -->
-    <button class="back-btn-custom" onclick="location.href='dashboard.html'">← 返回大厅</button>
-
-    <!-- 独立的标题 -->
-    <h1 class="profile-title">🎓 个人主页</h1>
+        <main class="cm-main">
+            <header class="profile-topbar">
+                <div>
+                    <button class="back-btn-custom" id="btn-back-profile" style="display:none; margin-bottom:6px;" onclick="history.back()">
+                        <span class="material-symbols-outlined">arrow_back</span> Back
+                    </button>
+                    <h1 class="profile-title">Academic profile</h1>
+                    <p class="muted" style="margin:4px 0 0;">Skills, reputation, and collaboration history.</p>
+                </div>
+                <button class="cm-button ghost" id="btn-delete-account" style="color:var(--error);border-color:var(--error);display:none;" onclick="openDeleteAccount()">
+                    <span class="material-symbols-outlined">delete_forever</span> Delete Account
+                </button>
+            </header>
 
     <div class="profile-container">
-        <div class="info-card">
-            <div class="avatar" id="avatar-text">👤</div>
+        <section class="info-card">
+            <div id="avatar-wrapper" style="position:relative; display:inline-block; margin:0 auto 18px;" title="点击更换头像">
+                <div class="avatar" id="avatar-container" style="transition: transform 0.15s, box-shadow 0.15s; margin:0;">
+                    <img id="avatar-img" alt="" style="display:none; width:100%; height:100%; object-fit:cover; border-radius:50%; position:absolute; inset:0;">
+                    <span id="avatar-icon" style="font-size:46px; font-weight:800; color:var(--on-primary-container); line-height:104px; text-align:center;">?</span>
+                </div>
+                <span class="material-symbols-outlined" style="position:absolute; bottom:-2px; right:-2px; font-size:16px; color:#fff; background:rgba(0,0,0,0.55); border-radius:50%; padding:4px; display:none; z-index:1;" id="avatar-camera-badge">photo_camera</span>
+                <input type="file" id="avatar-file-input" accept="image/*" style="display:none;" onchange="uploadAvatar(event)">
+            </div>
             <h2 class="user-name" id="display-name">加载中...</h2>
             <p class="user-tags" id="display-dept-grade">院系年级加载中...</p>
             <p class="user-tags" id="display-campus-hours">校区加载中...</p>
             <div class="skills-container" id="display-auto-tags"></div>
-            <a id="display-portfolio" class="portfolio-link" href="#" target="_blank" style="display: none;">🔗 查看我的作品集/主页</a>
+            <a id="display-portfolio" class="portfolio-link" href="#" target="_blank" style="display:none;">
+                <span class="material-symbols-outlined">link</span> View portfolio
+            </a>
             <div class="user-bio" id="display-bio">加载中...</div>
             <p class="user-tags" id="display-bio-mbti" style="margin-top:6px; display:none;"></p>
-            <div id="display-feature-updated" style="font-size:12px; color:#9ca3af; margin-bottom:14px;"></div>
+            <div id="display-feature-updated" class="muted" style="margin-bottom:14px;"></div>
             <div id="action-btn-container"></div>
-        </div>
+        </section>
 
-        <div class="reviews-card">
+        <section class="reviews-card">
             <div class="rating-header">
-                <h2 style="font-size: 20px; margin: 0;">任务结项评价</h2>
-                <div style="text-align: right;">
-                    <div class="average-score" id="display-avg">0.0 <span style="font-size: 20px;">⭐</span></div>
-                    <span style="color: #6b7280; font-size: 14px;">加权总分 / 星级</span>
+                <div>
+                    <span class="cm-eyebrow">Reputation</span>
+                    <h2 style="margin:0;">Task reviews</h2>
+                </div>
+                <div style="text-align:right;">
+                    <div class="average-score" id="display-avg">0.0 <span style="font-size:20px;">★</span></div>
+                    <span class="muted">Weighted score</span>
                 </div>
             </div>
+
             <div id="reviews-list">
-                <p style="color: #9ca3af; text-align: center; padding: 20px;">暂无评价记录</p>
+                <p class="muted" style="text-align:center; padding:20px;">暂无评价记录</p>
             </div>
-            <div class="activity-board">
-                <h3 style="font-size:17px; margin:0 0 12px 0; color:#111827;">我的活动</h3>
-                <div class="activity-grid">
+
+            <div class="activity-board" style="margin-top:22px;">
+                <div class="cm-section-head">
+                    <h3 style="margin:0;">My activity</h3>
+                </div>
+                <div class="activity-grid" style="margin-top:12px;">
                     <div class="activity-col">
-                        <strong style="font-size:14px; color:#111827;">进行中</strong>
+                        <strong>Ongoing</strong>
                         <div id="ongoing-activities" style="margin-top:8px;"></div>
                     </div>
                     <div class="activity-col">
-                        <strong style="font-size:14px; color:#111827;">历史活动</strong>
+                        <strong>History</strong>
                         <div id="history-activities" style="margin-top:8px;"></div>
                     </div>
                 </div>
             </div>
-        </div>
+        </section>
+    </div>
+        </main>
     </div>
 
-    <div id="edit-modal" class="modal">
-        <div class="modal-content">
-            <h2 style="margin-bottom: 20px;">✍️ 编辑个人资料</h2>
-            <input type="text" id="edit-dept" placeholder="院系 (如：信息与通信工程学院)">
-            <input type="text" id="edit-grade" placeholder="年级 (如：2024级本科)">
-            <select id="edit-campus">
-                <option value="沙河校区">沙河校区</option>
-                <option value="西土城校区">西土城校区</option>
-            </select>
-            <input type="text" id="edit-portfolio" placeholder="个人主页/作品集链接 (可选)">
-            <textarea id="edit-bio" rows="4" placeholder="一句话介绍你的经历/技能/偏好，可选写入 MBTI（如：我是 INTJ）"></textarea>
-            <div style="display: flex; gap: 10px; justify-content: flex-end;">
-                <button onclick="closeModal('edit-modal')" style="background: #f3f4f6; color: #374151; padding: 10px 20px; border:none; border-radius: 8px; cursor: pointer;">取消</button>
-                <button onclick="saveProfile()" style="background: #10b981; color: white; padding: 10px 20px; border:none; border-radius: 8px; font-weight: bold; cursor: pointer;">保存资料</button>
+    <div id="edit-modal" class="modal" style="display:none;">
+        <div class="modal-content" style="padding:28px;">
+            <h2>Edit profile</h2>
+            <div class="field-stack">
+                <input type="text" id="edit-dept" placeholder="院系">
+                <input type="text" id="edit-grade" placeholder="年级">
+                <select id="edit-campus">
+                    <option value="沙河校区">沙河校区</option>
+                    <option value="西土城校区">西土城校区</option>
+                </select>
+                <input type="text" id="edit-portfolio" placeholder="个人主页 / 作品集链接">
+                <textarea id="edit-bio" rows="4" placeholder="一句话介绍你的经历、技能、偏好，可写入 MBTI"></textarea>
+                <div class="header-btns" style="justify-content:flex-end;">
+                    <button type="button" class="cm-button ghost" onclick="closeModal('edit-modal')">Cancel</button>
+                    <button type="button" class="cm-button secondary" onclick="saveProfile()">Save Profile</button>
+                </div>
             </div>
         </div>
     </div>
 
-    <div id="chat-modal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.5); justify-content:center; align-items:center; z-index:101;">
-        <div style="background:white; width:90%; max-width:560px; border-radius:12px; max-height:80vh; overflow:hidden; display:flex; flex-direction:column;">
-            <div style="padding:14px 18px; border-bottom:1px solid #e5e7eb; display:flex; justify-content:space-between; align-items:center; gap:16px;">
-                <strong id="chat-with" style="flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">聊天</strong>
-                <button onclick="closeChat()" style="background:none;border:none;font-size:20px;cursor:pointer;color:#9ca3af;padding:0;width:auto;flex-shrink:0;">&times;</button>
+    <!-- Delete Account Page Overlay -->
+    <div id="delete-overlay" style="display:none;position:fixed;inset:0;z-index:100;background:var(--surface);overflow-y:auto;">
+        <div style="max-width:720px;margin:40px auto;padding:0 20px 60px;">
+            <!-- Close button -->
+            <div style="display:flex;justify-content:flex-end;margin-bottom:12px;">
+                <button onclick="closeDeleteAccount()" class="cm-button ghost" type="button">&times; Close</button>
             </div>
-            <div id="chat-history" style="padding:16px; overflow:auto; flex:1; background:#f9fafb;"></div>
-            <div style="padding:12px; border-top:1px solid #e5e7eb;">
-                <input id="chat-input" type="text" placeholder="输入私信..." style="width:100%; padding:10px; border-radius:8px; border:1px solid #e5e7eb; box-sizing:border-box; margin-bottom:8px;" />
-                <button onclick="sendChatMessage()" style="width:100%; padding:10px; border-radius:8px; background:#3b82f6; color:#fff; border:none; cursor:pointer; font-size:14px; font-weight:bold; box-sizing:border-box;">发送</button>
+
+            <!-- Main card -->
+            <div style="background:rgba(255,255,255,0.96);border:1px solid rgba(194,198,214,0.38);border-radius:16px;box-shadow:0 4px 10px rgba(15,23,42,0.02),0 16px 34px rgba(15,23,42,0.015);padding:40px 36px;position:relative;overflow:hidden;">
+                <!-- Red accent line at top -->
+                <div style="position:absolute;top:0;left:0;width:100%;height:4px;background:var(--error);"></div>
+
+                <!-- Ghost :( emoticon -->
+                <div style="position:absolute;top:16px;right:24px;font-size:100px;font-weight:800;color:rgba(114,119,133,0.12);line-height:1;pointer-events:none;font-family:monospace;">:(</div>
+
+                <!-- Warning icon -->
+                <div style="display:flex;align-items:center;gap:16px;margin-bottom:24px;position:relative;z-index:1;">
+                    <div style="width:48px;height:48px;border-radius:50%;background:var(--error-container);display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+                        <span class="material-symbols-outlined" style="font-size:26px;color:var(--error);">warning</span>
+                    </div>
+                    <div>
+                        <h2 style="margin:0;font-size:24px;font-weight:800;">Delete Account</h2>
+                        <p style="margin:2px 0 0;font-size:13px;color:var(--on-surface-variant);">We're sorry to see you go. Please read carefully before proceeding.</p>
+                    </div>
+                </div>
+
+                <!-- What happens next -->
+                <div style="background:var(--surface-container-low);border:1px solid rgba(194,198,214,0.4);border-radius:10px;padding:22px;margin-bottom:20px;position:relative;z-index:1;">
+                    <h4 style="margin:0 0 14px;font-size:14px;font-weight:800;color:var(--error);display:flex;align-items:center;gap:6px;">
+                        <span class="material-symbols-outlined" style="font-size:18px;">delete_forever</span> What happens next?
+                    </h4>
+                    <div style="display:flex;flex-direction:column;gap:12px;font-size:13px;color:var(--on-surface-variant);line-height:1.55;">
+                        <div style="display:flex;align-items:flex-start;gap:10px;">
+                            <span class="material-symbols-outlined" style="font-size:17px;color:var(--outline);flex-shrink:0;margin-top:1px;">folder_off</span>
+                            <span><strong style="color:var(--on-surface);">Projects orphaned.</strong> Sole-contributor projects will be deleted. Collaborative projects will be transferred or anonymized.</span>
+                        </div>
+                        <div style="display:flex;align-items:flex-start;gap:10px;">
+                            <span class="material-symbols-outlined" style="font-size:17px;color:var(--outline);flex-shrink:0;margin-top:1px;">speaker_notes_off</span>
+                            <span><strong style="color:var(--on-surface);">Messages lost.</strong> Direct messages cleared. Group messages retain "Deleted User" label.</span>
+                        </div>
+                        <div style="display:flex;align-items:flex-start;gap:10px;">
+                            <span class="material-symbols-outlined" style="font-size:17px;color:var(--outline);flex-shrink:0;margin-top:1px;">reviews</span>
+                            <span><strong style="color:var(--on-surface);">Reviews gone.</strong> Pending reviews cancelled. Completed reviews anonymized.</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Why leaving -->
+                <div style="margin-bottom:20px;position:relative;z-index:1;">
+                    <h4 style="margin:0 0 12px;font-size:14px;font-weight:800;">Why are you leaving? <span style="font-weight:400;color:var(--outline);font-size:12px;">(optional)</span></h4>
+                    <div style="display:flex;flex-direction:column;gap:9px;">
+                        <label style="display:flex;align-items:center;gap:9px;font-size:13px;color:var(--on-surface-variant);cursor:pointer;">
+                            <input type="checkbox" value="Finished academic projects" style="width:16px;height:16px;accent-color:var(--primary);"> Finished my academic projects
+                        </label>
+                        <label style="display:flex;align-items:center;gap:9px;font-size:13px;color:var(--on-surface-variant);cursor:pointer;">
+                            <input type="checkbox" value="Too busy" style="width:16px;height:16px;accent-color:var(--primary);"> Too busy to participate
+                        </label>
+                        <label style="display:flex;align-items:center;gap:9px;font-size:13px;color:var(--on-surface-variant);cursor:pointer;">
+                            <input type="checkbox" value="Found another platform" style="width:16px;height:16px;accent-color:var(--primary);"> Found another platform
+                        </label>
+                        <label style="display:flex;align-items:center;gap:9px;font-size:13px;color:var(--on-surface-variant);cursor:pointer;">
+                            <input type="checkbox" value="Privacy concerns" style="width:16px;height:16px;accent-color:var(--primary);"> Privacy concerns
+                        </label>
+                    </div>
+                    <input type="text" id="delete-feedback" placeholder="Other reason..." style="margin-top:10px;font-size:13px;min-height:38px;width:100%;">
+                </div>
+
+                <!-- Confirmation -->
+                <div style="background:rgba(186,26,26,0.06);padding:16px 18px;border-radius:10px;border:1px solid rgba(186,26,26,0.18);margin-bottom:22px;position:relative;z-index:1;">
+                    <label style="display:flex;align-items:center;gap:10px;font-size:13px;font-weight:700;color:var(--error);cursor:pointer;">
+                        <input type="checkbox" id="delete-confirm" onchange="toggleDeleteBtn()" style="width:18px;height:18px;flex-shrink:0;">
+                        I understand this action is permanent and irreversible. My data cannot be recovered once deleted.
+                    </label>
+                </div>
+
+                <!-- Action buttons -->
+                <div style="display:flex;gap:12px;flex-direction:row-reverse;flex-wrap:wrap;position:relative;z-index:1;">
+                    <button class="cm-button" onclick="closeDeleteAccount()" style="min-height:48px;flex:1;min-width:160px;">Keep My Account</button>
+                    <button id="btn-delete-confirm" onclick="submitDeleteAccount()" disabled
+                        style="min-height:48px;flex:1;min-width:160px;padding:10px 24px;border-radius:10px;border:1px solid var(--error);background:var(--surface-container-lowest);color:var(--error);font-weight:800;font-size:14px;cursor:default;opacity:0.4;transition:opacity 0.2s ease;">
+                        <span class="material-symbols-outlined" style="font-size:18px;vertical-align:middle;">delete_forever</span> Delete Permanently
+                    </button>
+                </div>
             </div>
         </div>
     </div>

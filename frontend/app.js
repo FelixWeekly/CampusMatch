@@ -3,6 +3,7 @@ function switchForm(targetForm) {
     const loginBox = document.getElementById('login-box');
     const registerBox = document.getElementById('register-box');
     const resetBox = document.getElementById('reset-box');
+    const tabs = document.querySelectorAll('.auth-tab');
 
     // 先把所有表单隐藏
     loginBox.classList.add('hidden');
@@ -17,6 +18,10 @@ function switchForm(targetForm) {
     } else {
         loginBox.classList.remove('hidden');
     }
+
+    tabs.forEach((tab) => tab.classList.remove('active'));
+    const tabIndex = targetForm === 'register' ? 1 : (targetForm === 'reset' ? 2 : 0);
+    if (tabs[tabIndex]) tabs[tabIndex].classList.add('active');
 }
 
 // 获取邮箱验证码
@@ -61,10 +66,7 @@ async function login() {
         const data = await response.json(); // 解析后端返回的结果
 
         if (data.success) {
-            // 🌟 魔法：把后端返回的用户名存到浏览器的本地记忆里
-            localStorage.setItem('currentUser', data.userName); 
-            
-            // 🌟 页面跳转指令：带你去大厅！
+            localStorage.setItem('currentUser', data.userName);
             window.location.href = "dashboard.html";
         } else {
             alert('登录失败：' + data.message);
@@ -97,9 +99,8 @@ async function register() {
 
         if (data.success) {
             alert('太棒了！' + data.message);
-            // 注册成功，清空表单并自动切换回登录页面！
-            document.getElementById('reg-password').value = ''; 
-            switchForm('login'); 
+            document.getElementById('reg-password').value = '';
+            switchForm('login');
         } else {
             alert('注册失败：' + data.message);
         }

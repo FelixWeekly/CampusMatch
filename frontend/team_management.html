@@ -1,50 +1,94 @@
 <!DOCTYPE html>
-<html lang="zh-CN">
+<html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>团队管理中心</title>
+    <title>Collaborative Hub - CampusMatch</title>
     <link rel="stylesheet" href="style.css">
 </head>
 <body class="team-page-body">
-    <div class="team-shell">
-        <header class="team-topbar">
-            <div class="team-topbar-actions">
-                <button onclick="goBackDashboard()" class="back-btn-custom team-back-btn">← 返回大厅</button>
+    <div class="cm-app-shell">
+        <aside class="cm-sidebar">
+            <a class="cm-brand" href="dashboard.html">
+                <span class="cm-brand-mark"><span class="material-symbols-outlined" style="font-variation-settings:'FILL' 1;">school</span></span>
+                <span>
+                    <span class="cm-brand-title">CampusMatch</span>
+                    <span class="cm-brand-subtitle">Academic Workspace</span>
+                </span>
+            </a>
+            <nav class="cm-nav" aria-label="Workspace">
+                <button class="cm-nav-link" type="button" onclick="window.location.href='dashboard.html'">
+                    <span class="material-symbols-outlined">dashboard</span> Dashboard
+                </button>
+                <button class="cm-nav-link active" type="button">
+                    <span class="material-symbols-outlined">account_tree</span> Projects
+                </button>
+                <button class="cm-nav-link" type="button" onclick="window.location.href='community.html'">
+                    <span class="material-symbols-outlined">groups</span> Community
+                </button>
+                <button class="cm-nav-link" type="button" onclick="window.location.href='messages.html'">
+                    <span class="material-symbols-outlined">chat</span> Messages
+                </button>
+            </nav>
+            <div class="cm-sidebar-footer">
+                <button class="cm-nav-link" type="button" onclick="window.location.href='profile.html'">
+                    <span class="material-symbols-outlined">account_circle</span> Profile
+                </button>
+                <button class="cm-nav-link" type="button" onclick="localStorage.removeItem('currentUser'); window.location.href='index.html';">
+                    <span class="material-symbols-outlined">logout</span> Log out
+                </button>
             </div>
-            <div class="team-title-wrap">
-                <h1>项目管理与协作中心</h1>
+        </aside>
+
+        <main class="cm-main">
+            <!-- Top bar with project switcher -->
+            <header class="cm-topbar">
+                <div class="project-switcher">
+                    <button class="project-switcher-trigger" id="project-switcher-trigger" onclick="toggleProjectSwitcher()">
+                        <span id="current-project-name">Select a project</span>
+                        <span class="material-symbols-outlined">expand_more</span>
+                    </button>
+                    <div class="project-switcher-dropdown" id="project-switcher-dropdown">
+                        <div class="project-switcher-search">
+                            <input type="text" id="switcher-search" placeholder="Search projects..." oninput="filterSwitcherProjects()">
+                        </div>
+                        <div id="switcher-project-list"></div>
+                        <div class="project-switcher-footer">
+                            <a href="dashboard.html" style="font-size:13px; font-weight:700; color:var(--primary); text-decoration:none;">+ New Collaboration</a>
+                        </div>
+                    </div>
+                </div>
+                <div class="header-btns">
+                    <button type="button" class="team-panel-ghost" id="btn-pin-project" style="display:none;" onclick="togglePinProject()" title="Pin to top">
+                        <span class="material-symbols-outlined" id="pin-icon">push_pin</span> Pin
+                    </button>
+                    <button type="button" class="team-panel-ghost" id="btn-project-chat" style="display:none;" onclick="openProjectChat()">
+                        <span class="material-symbols-outlined">chat</span> Chat
+                    </button>
+                    <button type="button" class="team-panel-ghost" id="btn-invite-member" style="display:none;" onclick="switchView('activity')">
+                        <span class="material-symbols-outlined">person_add</span> Collaborate
+                    </button>
+                </div>
+            </header>
+
+            <!-- Tab navigation -->
+            <nav class="project-tabs" id="project-tabs" style="display:none;">
+                <button class="project-tab active" data-view="overview" onclick="switchView('overview')">Overview</button>
+                <button class="project-tab" data-view="issues" onclick="switchView('issues')">Requirements</button>
+                <button class="project-tab" data-view="members" onclick="switchView('members')">Members</button>
+                <button class="project-tab" data-view="activity" onclick="switchView('activity')">Collaboration</button>
+                <button class="project-tab" data-view="checkins" onclick="switchView('checkins')">Check-ins</button>
+            </nav>
+
+            <!-- Content area -->
+            <div class="project-content" id="project-content">
+                <p class="team-empty" id="project-placeholder">
+                    <span class="material-symbols-outlined" style="font-size:48px; color:var(--outline-variant); display:block; margin-bottom:12px;">account_tree</span>
+                    Select a project from the top bar to get started.
+                </p>
+                <div id="project-view-container" style="display:none;"></div>
             </div>
-        </header>
-
-        <section class="team-layout">
-            <aside class="team-left-panel">
-                <div class="team-panel-head">
-                    <div>
-                        <h3>我的项目</h3>
-                    </div>
-                    <button type="button" class="team-panel-ghost" onclick="loadProjects()">刷新</button>
-                </div>
-                <div id="team-project-list" class="team-scroll"></div>
-            </aside>
-
-            <main class="team-main-panel team-main-shell">
-                <div class="team-main-toolbar">
-                    <div>
-                        <p class="team-eyebrow">当前项目</p>
-                        <h2 id="team-workspace-title">请选择一个项目</h2>
-                    </div>
-                    <div class="team-main-toolbar-actions">
-                        <button type="button" class="team-panel-ghost" onclick="resetViewOrder()">恢复默认顺序</button>
-                        <button type="button" class="team-panel-ghost" onclick="switchView('overview')">回到概览</button>
-                    </div>
-                </div>
-                <div id="team-view-nav" class="team-view-nav"></div>
-                <div id="team-main-panel" class="team-page-slot">
-                    <p class="team-empty">正在加载项目详情...</p>
-                </div>
-            </main>
-        </section>
+        </main>
     </div>
 
     <script src="project_center.js"></script>

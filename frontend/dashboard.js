@@ -30,7 +30,6 @@ window.onload = function() {
     }
     syncCustomLabelInputWidth();
 
-    updateQuickNavActive();
 };
 
 function logout() {
@@ -146,9 +145,9 @@ function normalizePostLabels(post) {
 }
 
 function labelChipHtml(label, selected, onClick) {
-    const bg = selected ? '#dbeafe' : '#f8fafc';
-    const color = selected ? '#1d4ed8' : '#334155';
-    const border = selected ? '#93c5fd' : '#cbd5e1';
+    const bg = selected ? 'var(--primary-container)' : '#f8fafc';
+    const color = selected ? 'var(--primary)' : '#334155';
+    const border = selected ? 'var(--primary-container-strong)' : '#cbd5e1';
     return `<button type="button" onclick="${onClick}" style="height:28px; line-height:normal; width:auto; padding:0 12px; border-radius:999px; border:1px solid ${border}; background:${bg}; color:${color}; font-size:12px; font-family:inherit; cursor:pointer; box-sizing:border-box; margin:0; outline:none; text-align:center; vertical-align:middle;"># ${label}</button>`;
 }
 
@@ -167,7 +166,7 @@ function renderLabelPickers() {
                     maxlength="12"
                     placeholder="在此输入"
                     oninput="syncCustomLabelInputWidth()"
-                    style="height:28px; line-height:normal; width:80px; min-width:80px; max-width:320px; padding:0 12px; border-radius:999px; border:1px solid #93c5fd; background:#dbeafe; color:#1d4ed8; font-size:12px; font-family:inherit; box-sizing:border-box; margin:0 !important; margin-bottom:0 !important; outline:none; transition:width .16s ease; text-align:center; vertical-align:middle;"
+                    style="height:28px; line-height:normal; width:80px; min-width:80px; max-width:320px; padding:0 12px; border-radius:999px; border:1px solid var(--primary-container-strong); background:var(--primary-container); color:var(--primary); font-size:12px; font-family:inherit; box-sizing:border-box; margin:0 !important; margin-bottom:0 !important; outline:none; transition:width .16s ease; text-align:center; vertical-align:middle;"
                 />
                 <span id="custom-label-limit-warning" style="font-size:12px; color:#ef4444; display:none; margin-left:4px; line-height:28px;">输入内容已达上限</span>
             `;
@@ -335,9 +334,6 @@ function scheduleQuickNavUpdate() {
         navTicking = false;
     });
 }
-
-window.addEventListener('scroll', scheduleQuickNavUpdate);
-window.addEventListener('resize', scheduleQuickNavUpdate);
 
 function togglePostsSection() {
     const body = document.getElementById('posts-section-body');
@@ -530,7 +526,7 @@ function renderPosts() {
                 </div>
                 <div style="display: flex; justify-content: space-between; align-items: center; gap: 16px; padding-top: 16px; border-top: 1px solid #f3f4f6; flex-wrap: wrap;">
                     <div style="display: flex; align-items: center; gap: 12px; font-size: 14px; color: #6b7280;">
-                        <span>发布者: <a href="profile.html?user=${post.author}" style="color: #3b82f6; text-decoration: none; font-weight: bold;">${post.author}</a></span>
+                        <span>发布者: <a href="profile.html?user=${encodeURIComponent(post.author || '')}" style="color: #3b82f6; text-decoration: none; font-weight: bold;">${post.author}</a></span>
                         <span style="color: #9ca3af;">|</span>
                         <span style="color: #9ca3af;">${post.created_at || ''}</span>
                         ${popularityBadge ? '<span style="color: #9ca3af;">|</span>' + popularityBadge : ''}
@@ -878,69 +874,106 @@ async function contactSkillProvider(postId) {
     }
 }
 
+function escapeHtml(v) {
+    return String(v || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
 async function openInbox() {
-    // 1. 显示弹窗 (把 display 从 none 变成 flex，让它居中显示)
-    document.getElementById('inbox-modal').style.display = 'flex';
+    document.getElementById('inbox-overlay').classList.add('open');
+    document.getElementById('inbox-panel').classList.add('open');
+    document.getElementById('inbox-detail-panel').classList.remove('open');
     const messagesContainer = document.getElementById('inbox-messages');
-    messagesContainer.innerHTML = '<p>正在疯狂拉取消息中...</p>';
+    messagesContainer.innerHTML = '<p class="inbox-empty">Loading...</p>';
 
     const currentUser = localStorage.getItem('currentUser');
-
     try {
-        // 2. 向后端请求属于我的消息 (注意 URL 后面带了 ?user=xxx)
         const response = await fetch(`http://localhost:3000/api/my-messages?user=${encodeURIComponent(currentUser)}`);
         const data = await response.json();
-
-        if (data.success) {
-            messagesContainer.innerHTML = ''; // 清空加载提示
-            
-            // 如果没人给我发消息
-            if (data.data.length === 0) {
-                messagesContainer.innerHTML = '<p style="color: #6b7280; text-align: center;">暂时还没有人申请你的帖子哦~</p>';
-                return;
-            }
-
-            // 如果有消息，循环渲染出来
-            data.data.forEach(msg => {
-                const isTeamRecruit = msg.type === '寻人组队';
-                const isPending = msg.status === 'pending';
-                const statusText = msg.status === 'accepted' ? '已通过' : (msg.status === 'rejected' ? '已拒绝' : '待处理');
-                const statusColor = msg.status === 'accepted' ? '#059669' : (msg.status === 'rejected' ? '#dc2626' : '#d97706');
-                const decisionBtns = (isTeamRecruit && isPending)
-                    ? `
-                        <button onclick="decideApplication(${msg.application_id}, 'accepted')" style="width:auto; white-space:nowrap; display:inline-flex; align-items:center; justify-content:center; padding:6px 10px; border-radius:6px; background:#10b981; color:white; border:none; cursor:pointer; font-size:13px; line-height:1;">通过入队</button>
-                        <button onclick="decideApplication(${msg.application_id}, 'rejected')" style="width:auto; white-space:nowrap; display:inline-flex; align-items:center; justify-content:center; padding:6px 10px; border-radius:6px; background:#ef4444; color:white; border:none; cursor:pointer; font-size:13px; line-height:1;">拒绝</button>
-                    `
-                    : '';
-
-                const msgHTML = `
-                    <div style="background: #f9fafb; padding: 15px; border-radius: 8px; margin-bottom: 10px; border-left: 4px solid #3b82f6; display:flex; flex-direction:column; gap:8px;">
-                        <div style="display:flex; justify-content:space-between; align-items:center; gap:10px;">
-                            <p style="font-size: 14px; color: #6b7280; margin: 0;">
-                                <a href="profile.html?user=${msg.applicant_name}" style="color: #3b82f6; text-decoration: none; font-weight: bold;">${msg.applicant_name}</a> 申请了你的帖子: <span style="color: #1f2937;">《${msg.title}》</span>
-                            </p>
-                            <div style="display:flex; gap:8px; align-items:center; flex-wrap:nowrap; white-space:nowrap;">
-                                ${decisionBtns}
-                                <button onclick="openChat('${msg.applicant_name}','${msg.title.replace(/'/g,"\\'")}' )" style="width:auto; white-space:nowrap; display:inline-flex; align-items:center; justify-content:center; padding:6px 10px; border-radius:6px; background:#3b82f6; color:white; border:none; cursor:pointer; font-size:13px; line-height:1;">私信</button>
-                            </div>
-                        </div>
-                        <p style="margin:0; font-size:12px; color:${statusColor}; font-weight:700;">审批状态：${statusText}</p>
-                        <p style="background: white; padding: 10px; border-radius: 6px; border: 1px solid #e5e7eb; margin: 0;">
-                            💬 留言: ${msg.message}
-                        </p>
-                    </div>
-                `;
-                messagesContainer.innerHTML += msgHTML;
-            });
+        if (!data.success) { messagesContainer.innerHTML = '<p class="inbox-empty">Failed to load messages</p>'; return; }
+        if (!data.data || !data.data.length) {
+            messagesContainer.innerHTML = '<p class="inbox-empty">No applications yet.</p>';
+            return;
         }
-    } catch (error) {
-        messagesContainer.innerHTML = '<p style="color: red;">网络错误，无法加载消息！</p>';
+
+        window._inboxMessages = data.data;
+        messagesContainer.innerHTML = data.data.map((msg, idx) => {
+            const isTeamRecruit = msg.type === '寻人组队';
+            const isPending = msg.status === 'pending';
+            const statusCls = msg.status === 'accepted' ? 'accepted' : (msg.status === 'rejected' ? 'rejected' : 'pending');
+            const statusText = msg.status === 'accepted' ? 'Approved' : (msg.status === 'rejected' ? 'Declined' : 'Pending');
+            const initials = (msg.applicant_name || '?').charAt(0).toUpperCase();
+
+            return `
+                <div class="inbox-app-card">
+                    <div class="inbox-app-header">
+                        <div class="inbox-app-avatar">${initials}</div>
+                        <div class="inbox-app-meta">
+                            <div class="inbox-app-name">${escapeHtml(msg.applicant_name)}</div>
+                            <div class="inbox-app-info">Applied to</div>
+                            <div class="inbox-app-title">${escapeHtml(msg.title)}</div>
+                        </div>
+                        <span class="inbox-app-status ${statusCls}">${statusText}</span>
+                    </div>
+                    <div class="inbox-app-message">${escapeHtml(msg.message || '(no message)')}</div>
+                    <div class="inbox-app-actions">
+                        ${(isTeamRecruit && isPending) ? `
+                            <button class="cm-button secondary" onclick="decideApplication(${msg.application_id},'accepted')">Approve</button>
+                            <button style="background:var(--error);color:#fff;border-color:var(--error);" onclick="decideApplication(${msg.application_id},'rejected')">Decline</button>
+                        ` : ''}
+                        <button class="cm-button ghost" onclick="window.location.href='profile.html?user=${encodeURIComponent(msg.applicant_name)}'">View Profile</button>
+                        <button class="cm-button ghost" onclick="window.location.href='messages.html?user=${encodeURIComponent(msg.applicant_name)}'">
+                            <span class="material-symbols-outlined">send</span> Message
+                        </button>
+                    </div>
+                </div>
+            `;
+        }).join('');
+    } catch (_) {
+        messagesContainer.innerHTML = '<p class="inbox-empty">Network error</p>';
     }
 }
 
-// 🌟 【新增：关闭收件箱】
 function closeInbox() {
-    document.getElementById('inbox-modal').style.display = 'none';
+    document.getElementById('inbox-overlay').classList.remove('open');
+    document.getElementById('inbox-panel').classList.remove('open');
+    document.getElementById('inbox-detail-panel').classList.remove('open');
+}
+
+function openInboxDetail(idx) {
+    const msg = (window._inboxMessages && window._inboxMessages[idx]) || {};
+    document.getElementById('inbox-panel').classList.remove('open');
+    const panel = document.getElementById('inbox-detail-panel');
+    panel.classList.add('open');
+    const content = document.getElementById('inbox-detail-content');
+    const initials = (msg.applicant_name || '?').charAt(0).toUpperCase();
+    const statusCls = msg.status === 'accepted' ? 'accepted' : (msg.status === 'rejected' ? 'rejected' : 'pending');
+    const statusText = msg.status === 'accepted' ? 'Approved' : (msg.status === 'rejected' ? 'Declined' : 'Pending');
+    content.innerHTML = `
+        <div style="text-align:center;margin-bottom:20px;">
+            <div class="inbox-app-avatar" style="width:72px;height:72px;font-size:28px;margin:0 auto 12px;">${initials}</div>
+            <h2 style="margin:0 0 4px;font-size:22px;font-weight:800;">${escapeHtml(msg.applicant_name || '')}</h2>
+            <p style="margin:0;color:var(--outline);font-size:13px;">${escapeHtml(msg.applicant_dept || '')} · ${escapeHtml(msg.applicant_grade || '')}</p>
+        </div>
+        <div class="inbox-detail-section">
+            <h3>Application for</h3>
+            <p style="font-size:14px;font-weight:700;color:var(--primary);">${escapeHtml(msg.title || '')}</p>
+            <span class="inbox-app-status ${statusCls}">${statusText}</span>
+        </div>
+        <div class="inbox-detail-section">
+            <h3>Message</h3>
+            <div class="inbox-app-message">${escapeHtml(msg.message || '(no message)')}</div>
+        </div>
+        <div class="inbox-app-actions" style="flex-direction:column;">
+            <button class="cm-button" style="width:100%;" onclick="window.location.href='messages.html?user=${encodeURIComponent(msg.applicant_name || '')}'">
+                <span class="material-symbols-outlined">send</span> Send Message
+            </button>
+        </div>
+    `;
+}
+
+function closeInboxDetail() {
+    document.getElementById('inbox-detail-panel').classList.remove('open');
+    document.getElementById('inbox-panel').classList.add('open');
 }
 
 // ===== 简单私聊功能（前端） =====
@@ -1058,8 +1091,6 @@ function handleChatInputKeyDown(e) {
 function updatePlaceholders() {
     const titleInput = document.getElementById('post-title');
     const contentInput = document.getElementById('post-content');
-    const compensationSection = document.getElementById('compensation-section');
-    const managementSection = document.getElementById('management-section');
     if (selectedPostLabel === '提供技能') {
         titleInput.placeholder = '你能提供什么支持？';
         contentInput.placeholder = '写明可提供的支持内容、可参与时段、协作方式和边界';
@@ -1070,8 +1101,6 @@ function updatePlaceholders() {
         titleInput.placeholder = '你希望招募什么角色？';
         contentInput.placeholder = '写明活动目标、需要的角色、时间安排和协作要求';
     }
-    compensationSection.style.display = 'flex';
-    if (managementSection) managementSection.style.display = 'block';
 }
 
 async function deletePost(postId) {
@@ -1228,11 +1257,10 @@ async function loadProjectDetail(projectId) {
                 <strong style="display:block; margin-bottom:6px;">快速打卡</strong>
                 <div style="display:flex; gap:8px; flex-wrap:wrap; margin-bottom:8px;">
                     <input id="checkin-note" type="text" placeholder="今天完成了什么？" style="flex:1; min-width:220px; padding:8px; margin:0;" />
-                    <input id="checkin-completion" type="number" min="0" max="100" placeholder="完成度(0-100)" style="width:160px; padding:8px; margin:0;" />
                     <button onclick="submitCheckin(${project.id})" style="width:auto; padding:8px 12px; font-size:12px;">提交打卡</button>
                 </div>
                 <div style="max-height:160px; overflow:auto; background:#fff; border:1px solid #e5e7eb; border-radius:8px; padding:8px;">
-                    ${checkins.length ? checkins.map((c) => `<div style="display:flex; justify-content:space-between; gap:10px; align-items:flex-start; font-size:12px; color:#374151; padding:6px 0; border-bottom:1px dashed #e5e7eb;"><div><strong>${c.user_name}</strong> (${c.task_completion}%)：${c.progress_note || '无'} <span style="color:#9ca3af;">${c.created_at}</span></div></div>`).join('') : '<span style="font-size:12px; color:#9ca3af;">暂无打卡记录</span>'}
+                    ${checkins.length ? checkins.map((c) => `<div style="display:flex; justify-content:space-between; gap:10px; align-items:flex-start; font-size:12px; color:#374151; padding:6px 0; border-bottom:1px dashed #e5e7eb;"><div><strong>${c.user_name}</strong>：${c.progress_note || '无'} <span style="color:#9ca3af;">${c.created_at}</span></div></div>`).join('') : '<span style="font-size:12px; color:#9ca3af;">暂无打卡记录</span>'}
                 </div>
             </div>
             <button onclick="openFullTeamCenter(${project.id})" style="width:auto; padding:8px 12px; font-size:12px; background:#0f172a; color:#fff;">进入项目管理</button>
@@ -1261,13 +1289,12 @@ async function changeProjectStatus(projectId, status) {
 async function submitCheckin(projectId) {
     const currentUser = localStorage.getItem('currentUser');
     const note = document.getElementById('checkin-note')?.value?.trim() || '';
-    const completion = document.getElementById('checkin-completion')?.value;
 
     try {
         const response = await fetch(`http://localhost:3000/api/projects/${projectId}/checkins`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ user: currentUser, progress_note: note, task_completion: Number(completion) })
+            body: JSON.stringify({ user: currentUser, progress_note: note })
         });
         const data = await response.json();
         if (!data.success) return alert(data.message || '打卡失败');

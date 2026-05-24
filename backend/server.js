@@ -10,7 +10,7 @@ const { DatabaseSync } = require('node:sqlite');
 dotenv.config({ path: path.join(__dirname, '.env') });
 
 const app = express();
-app.use(cors());
+app.use(cors({ origin: '*', methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'], allowedHeaders: ['Content-Type', 'Authorization'] }));
 app.use(express.json());
 
 const ALLOWED_CAMPUSES = ['沙河校区', '西土城校区'];
@@ -25,19 +25,20 @@ const RECOMMENDATION_WEIGHTS = {
     activity: 0.04
 };
 
-const ZHIPU_API_KEY = String(process.env.ZHIPU_API_KEY || '').trim();
-const ZHIPU_BASE_URL = String(process.env.ZHIPU_BASE_URL || 'https://open.bigmodel.cn/api/paas/v4').trim();
-const ZHIPU_MODEL = String(process.env.ZHIPU_MODEL || 'glm-4.7-flash').trim();
-const AI_RERANK_TIMEOUT_MS = Math.max(600, Number(process.env.AI_RERANK_TIMEOUT_MS || 1800));
-const AI_RERANK_CACHE_TTL_MS = Math.max(3000, Number(process.env.AI_RERANK_CACHE_TTL_MS || 45000));
+const DEEPSEEK_API_KEY = String(process.env.DEEPSEEK_API_KEY || '').trim();
+const DEEPSEEK_BASE_URL = String(process.env.DEEPSEEK_BASE_URL || 'https://api.deepseek.com').trim();
+const DEEPSEEK_MODEL = String(process.env.DEEPSEEK_MODEL || 'deepseek-v4-flash').trim();
+const AI_TIMEOUT_MS = Math.max(600, Number(process.env.AI_RERANK_TIMEOUT_MS || 8000));
+const AI_TAG_MAX_TOKENS = Math.max(120, Number(process.env.AI_RERANK_MAX_TOKENS || 300));
+const AI_TAG_CACHE_TTL_MS = Math.max(60000, Number(process.env.AI_RERANK_CACHE_TTL_MS || 300000));
 const CIRCLE_PROPOSAL_SUPPORT_THRESHOLD = Math.max(5, Number(process.env.CIRCLE_PROPOSAL_SUPPORT_THRESHOLD || 10));
-const CIRCLE_PROPOSAL_PUBLIC_DAYS = Math.max(1, Number(process.env.CIRCLE_PROPOSAL_PUBLIC_DAYS || 7));
-const AI_RERANK_ENABLED = !!ZHIPU_API_KEY;
-const aiRerankCache = new Map();
-const aiClient = AI_RERANK_ENABLED
+const CIRCLE_PROPOSAL_PUBLIC_DAYS = Math.max(1, Number(process.env.CIRCLE_PROPOSAL_PUBLIC_DAYS || 14));
+const AI_ENABLED = !!DEEPSEEK_API_KEY;
+const aiTagCache = new Map();
+const aiClient = AI_ENABLED
     ? new OpenAI({
-        apiKey: ZHIPU_API_KEY,
-        baseURL: ZHIPU_BASE_URL
+        apiKey: DEEPSEEK_API_KEY,
+        baseURL: DEEPSEEK_BASE_URL
     })
     : null;
 
@@ -68,7 +69,7 @@ app.post('/api/send-code', async (req, res) => {
     verificationCodes.set(email, { code, expiresAt: Date.now() + 10 * 60 * 1000 });
     
     console.log(`\n===========================================`);
-    console.log(`📩 【测试系统邮件】正在向 ${email} 发送验证码: ${code}`);
+    console.log(`📩 本地邮件测试向 ${email} 发送验证码: ${code}`);
     console.log(`===========================================\n`);
 
     try {
@@ -113,12 +114,23 @@ db.exec(`
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP
     );
 
-    -- 🌟 这是一张“关系表”，用来记录谁接了哪个单子
+    -- 🌟 这是一张"关系表"，用来记录谁接了哪个单子
     CREATE TABLE IF NOT EXISTS applications (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         post_id INTEGER,           -- 关联的帖子 ID
         applicant_name TEXT,       -- 申请人的名字
         message TEXT,              -- 申请留言（比如：我会弹吉他）
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
+
+    -- 项目退出申请表
+    CREATE TABLE IF NOT EXISTS exit_requests (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        project_id INTEGER,
+        user_name TEXT,
+        rating INTEGER DEFAULT 5,
+        reason TEXT DEFAULT '',
+        status TEXT DEFAULT 'pending',
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP
     );
 
@@ -404,6 +416,23 @@ if (!hasColumn('users', 'mbti')) {
 if (!hasColumn('users', 'interests')) {
     db.exec("ALTER TABLE users ADD COLUMN interests TEXT DEFAULT ''; ");
 }
+if (!hasColumn('users', 'role')) {
+    db.exec("ALTER TABLE users ADD COLUMN role TEXT DEFAULT 'user'; ");
+}
+if (!hasColumn('users', 'avatar')) {
+    db.exec("ALTER TABLE users ADD COLUMN avatar TEXT DEFAULT ''; ");
+}
+// 超管种子账号
+db.exec(`INSERT OR IGNORE INTO users (name, email, password, department, grade, role) VALUES ('Captain', 'qawsedrf@ide.com', 'qawsedrf', '系统管理', '教职工', 'admin');`);
+if (!hasColumn('community_circles', 'category')) {
+    db.exec("ALTER TABLE community_circles ADD COLUMN category TEXT DEFAULT 'Social'; ");
+}
+if (!hasColumn('community_circles', 'labels')) {
+    db.exec("ALTER TABLE community_circles ADD COLUMN labels TEXT DEFAULT ''; ");
+}
+if (!hasColumn('community_circles', 'is_public')) {
+    db.exec('ALTER TABLE community_circles ADD COLUMN is_public INTEGER DEFAULT 1;');
+}
 if (!hasColumn('posts', 'collaboration_mode')) {
     db.exec("ALTER TABLE posts ADD COLUMN collaboration_mode TEXT DEFAULT 'online';");
 }
@@ -457,7 +486,9 @@ function seedLegacyData() {
     seededPosts.forEach((postRow) => ensureProjectForRecruitingPost(postRow));
 }
 
-seedLegacyData();
+// seedLegacyData disabled — legacy seed data was causing deleted posts to reappear on restart.
+// To re-enable for initial setup, uncomment and restart once, then comment again.
+// seedLegacyData();
 
 function getProjectByPostId(postId) {
     return db.prepare('SELECT * FROM team_projects WHERE post_id = ?').get(postId);
@@ -479,6 +510,13 @@ function ensureProjectForRecruitingPost(postRow) {
         .run(project.id, postRow.author, 'leader');
     if (!before) {
         logProjectMemberHistory(project.id, postRow.author, postRow.author, 'join', '', 'leader', '项目创建人自动入队');
+        // Auto-create project group chat with welcome message
+        const chatRecipient = 'project:' + project.id;
+        const existingChat = db.prepare("SELECT id FROM messages WHERE recipient = ? LIMIT 1").get(chatRecipient);
+        if (!existingChat) {
+            db.prepare("INSERT INTO messages (sender, recipient, message) VALUES (?, ?, ?)")
+                .run(postRow.author, chatRecipient, '项目协作频道已开启。欢迎 ' + postRow.author + ' 加入团队！');
+        }
     }
 
     return project;
@@ -1007,128 +1045,274 @@ function buildRecommendationContext(currentUser) {
     };
 }
 
-async function rerankWithAI(user, candidates, limit) {
-    if (!AI_RERANK_ENABLED || !aiClient) return null;
-    if (!Array.isArray(candidates) || !candidates.length) return [];
+// AI 标签提取：从用户画像中提取结构化标签（带缓存）
+async function extractUserTagsWithAI(user) {
+    if (!AI_ENABLED || !aiClient) return null;
 
-    const compactCandidates = candidates.slice(0, 12).map((item) => ({
-        id: item.id,
-        title: String(item.title || '').slice(0, 42),
-        content: String(item.content || '').replace(/\s+/g, ' ').slice(0, 80),
-        type: item.type,
-        labels: parsePostLabels(item.post_labels),
-        campus: item.campus,
-        recommendation_score: item.recommendation_score
-    }));
+    const cacheKey = `user_tags:${user.name}`;
+    const cached = aiTagCache.get(cacheKey);
+    if (cached && Date.now() - cached.ts < AI_TAG_CACHE_TTL_MS) {
+        return cached.data;
+    }
 
     const userProfile = {
-        name: user.name,
+        skills: String(user.skills || '').slice(0, 200),
+        interests: String(user.interests || '').slice(0, 200),
+        bio: String(user.bio || '').slice(0, 200),
         department: user.department || '',
         grade: user.grade || '',
-        skills: String(user.skills || '').slice(0, 80),
-        interests: String(user.interests || '').slice(0, 80),
-        bio: String(user.bio || '').slice(0, 120),
         campus: user.campus || ''
     };
 
     const prompt = [
-        '你是校园任务匹配系统的重排器。',
-        '请基于用户画像，对候选帖子进行个性化重排。',
-        '返回严格 JSON，不要解释，不要 markdown。',
-        '理由必须是可执行匹配信息，禁止写“简介中有/标题提到/内容出现/文本包含”等来源描述。',
-        'JSON 格式如下：',
-        '{"ordered_ids":[1,2,3],"reason_by_id":{"1":["理由1","理由2"]}}',
-        'ordered_ids 只包含给定候选 id，且不重复，最多返回 limit 个。',
-        'reason_by_id 每个 id 只给 1 条简短中文理由（16字内），优先技能/兴趣/校区/协作方式。',
-        `limit=${limit}`,
-        `user_profile=${JSON.stringify(userProfile)}`,
-        `candidates=${JSON.stringify(compactCandidates)}`
+        '基于用户画像，提取用于匹配协作项目的结构化标签。',
+        '返回严格JSON，不要解释，不要markdown。',
+        '{"skill_tags":["标签"],"interest_tags":["标签"],"preferred_types":["项目招募","竞赛组队","学习小组","技术交流","社交活动","寻人组队"],"collaboration_mode":"offline|online|both","cross_campus":true/false}',
+        '标签总数不超过15个，每项最多5个。',
+        `user_profile=${JSON.stringify(userProfile)}`
     ].join('\n');
 
     const timeoutPromise = new Promise((_, reject) => {
-        setTimeout(() => reject(new Error('AI_RERANK_TIMEOUT')), AI_RERANK_TIMEOUT_MS);
+        setTimeout(() => reject(new Error('AI_TAG_TIMEOUT')), AI_TIMEOUT_MS);
     });
 
-    const completion = await Promise.race([
-        aiClient.chat.completions.create({
-            model: ZHIPU_MODEL,
-            temperature: 0.1,
-            max_tokens: 220,
-            messages: [
-                { role: 'system', content: '你只输出 JSON。' },
-                { role: 'user', content: prompt }
-            ]
-        }),
-        timeoutPromise
-    ]);
+    try {
+        const completion = await Promise.race([
+            aiClient.chat.completions.create({
+                model: DEEPSEEK_MODEL,
+                temperature: 0.1,
+                max_tokens: AI_TAG_MAX_TOKENS,
+                thinking: {"type": "disabled"},
+                messages: [
+                    { role: 'system', content: '你只输出JSON。' },
+                    { role: 'user', content: prompt }
+                ]
+            }),
+            timeoutPromise
+        ]);
 
-    const content = completion && completion.choices && completion.choices[0] && completion.choices[0].message
-        ? completion.choices[0].message.content
-        : '';
-    const payload = extractJsonPayload(content);
-    if (!payload || !Array.isArray(payload.ordered_ids)) return null;
+        const content = completion?.choices?.[0]?.message?.content || '';
+        const payload = extractJsonPayload(content);
+        if (!payload) return null;
 
-    const reasonById = payload.reason_by_id && typeof payload.reason_by_id === 'object'
-        ? payload.reason_by_id
-        : {};
+        const tags = {
+            skill_tags: Array.isArray(payload.skill_tags) ? payload.skill_tags.slice(0, 5) : [],
+            interest_tags: Array.isArray(payload.interest_tags) ? payload.interest_tags.slice(0, 5) : [],
+            preferred_types: Array.isArray(payload.preferred_types) ? payload.preferred_types.slice(0, 5) : [],
+            collaboration_mode: payload.collaboration_mode || 'both',
+            cross_campus: payload.cross_campus === true || payload.cross_campus === 'true'
+        };
 
-    const sourceMap = new Map(candidates.map((item) => [Number(item.id), item]));
-    const ordered = [];
+        aiTagCache.set(cacheKey, { ts: Date.now(), data: tags });
+        return tags;
+    } catch (err) {
+        console.error('[AI tag extraction error]', err.message);
+        return null;
+    }
+}
 
-    function normalizeReasons(rawReasons, fallbackReasons) {
-        const blockedPatterns = [
-            /简介中有/i,
-            /标题提到/i,
-            /内容出现/i,
-            /文本包含/i,
-            /描述里/i,
-            /关键词/i
-        ];
+// AI 搜索词扩展：将搜索词扩展为相关标签
+async function expandSearchWithAI(query) {
+    if (!AI_ENABLED || !aiClient) return null;
 
-        const normalized = (rawReasons || [])
-            .map((x) => String(x || '').replace(/[。；;]+$/g, '').trim())
-            .filter(Boolean)
-            .filter((x) => x.length <= 20)
-            .filter((x) => !blockedPatterns.some((re) => re.test(x)));
-
-        if (normalized.length) return [normalized[0]];
-
-        const fallback = (fallbackReasons || [])
-            .map((x) => String(x || '').trim())
-            .filter(Boolean)
-            .filter((x) => !x.includes('语义匹配度'));
-        return fallback.length ? [fallback[0]] : [];
+    const cacheKey = `search_tags:${query}`;
+    const cached = aiTagCache.get(cacheKey);
+    if (cached && Date.now() - cached.ts < AI_TAG_CACHE_TTL_MS) {
+        return cached.data;
     }
 
-    payload.ordered_ids.forEach((rawId) => {
-        const id = Number(rawId);
-        if (!sourceMap.has(id)) return;
-        const baseItem = sourceMap.get(id);
-        sourceMap.delete(id);
+    const prompt = [
+        '将搜索词扩展为用于匹配帖子的相关标签。',
+        '返回严格JSON，不要解释，不要markdown。',
+        '{"expanded_terms":["关键词"],"related_skills":["技能"],"related_interests":["兴趣"]}',
+        '标签总数不超过12个，每项最多5个。',
+        `search_query=${query}`
+    ].join('\n');
 
-        const aiReasonsRaw = reasonById[String(id)] || reasonById[id] || [];
-        const aiReasons = Array.isArray(aiReasonsRaw)
-            ? aiReasonsRaw.map((x) => String(x).trim()).filter(Boolean).slice(0, 2)
-            : [String(aiReasonsRaw || '').trim()].filter(Boolean).slice(0, 2);
-
-        const finalReasons = normalizeReasons(aiReasons, baseItem.recommendation_reasons || []);
-
-        ordered.push({
-            ...baseItem,
-            recommendation_reasons: finalReasons,
-            ai_reranked: true
-        });
+    const timeoutPromise = new Promise((_, reject) => {
+        setTimeout(() => reject(new Error('AI_TAG_TIMEOUT')), AI_TIMEOUT_MS);
     });
 
-    sourceMap.forEach((item) => {
-        ordered.push({ ...item, ai_reranked: false });
+    try {
+        const completion = await Promise.race([
+            aiClient.chat.completions.create({
+                model: DEEPSEEK_MODEL,
+                temperature: 0.1,
+                max_tokens: AI_TAG_MAX_TOKENS,
+                thinking: {"type": "disabled"},
+                messages: [
+                    { role: 'system', content: '你只输出JSON。' },
+                    { role: 'user', content: prompt }
+                ]
+            }),
+            timeoutPromise
+        ]);
+
+        const content = completion?.choices?.[0]?.message?.content || '';
+        const payload = extractJsonPayload(content);
+        if (!payload) return null;
+
+        const tags = {
+            expanded_terms: Array.isArray(payload.expanded_terms) ? payload.expanded_terms : [],
+            related_skills: Array.isArray(payload.related_skills) ? payload.related_skills : [],
+            related_interests: Array.isArray(payload.related_interests) ? payload.related_interests : []
+        };
+
+        aiTagCache.set(cacheKey, { ts: Date.now(), data: tags });
+        return tags;
+    } catch (err) {
+        console.error('[AI search expansion error]', err.message);
+        return null;
+    }
+}
+
+// 标签重叠评分：计算帖子与AI标签的匹配度，同时返回命中的标签名
+function computeTagOverlapScore(postLabels, postText, aiTags) {
+    if (!aiTags) return { score: 0, matchedTags: [] };
+    let score = 0;
+    const matchedTags = [];
+    const postLower = (postText || '').toLowerCase();
+    const labelsLower = (postLabels || []).map(l => l.toLowerCase());
+
+    const matchTag = (tag, weight) => {
+        const t = tag.toLowerCase();
+        let hit = false;
+        if (postLower.includes(t)) { score += weight; hit = true; }
+        if (labelsLower.some(l => l.includes(t) || t.includes(l))) { score += weight * 0.7; hit = true; }
+        if (hit) matchedTags.push(tag);
+    };
+
+    (aiTags.skill_tags || []).forEach(tag => matchTag(tag, 1.5));
+    (aiTags.interest_tags || []).forEach(tag => matchTag(tag, 1.0));
+    (aiTags.preferred_types || []).forEach(tag => matchTag(tag, 0.8));
+
+    return { score, matchedTags };
+}
+
+// 搜索标签评分：计算帖子与AI扩展搜索词的匹配度
+function computeSearchTagScore(postText, postLabels, searchTags) {
+    if (!searchTags) return 0;
+    let score = 0;
+    const postLower = (postText || '').toLowerCase();
+    const labelsLower = (postLabels || []).map(l => l.toLowerCase());
+
+    const allTerms = [
+        ...(searchTags.expanded_terms || []),
+        ...(searchTags.related_skills || []),
+        ...(searchTags.related_interests || [])
+    ];
+
+    allTerms.forEach(term => {
+        const t = term.toLowerCase();
+        if (postLower.includes(t)) score += 1;
+        if (labelsLower.some(l => l.includes(t) || t.includes(l))) score += 1.2;
     });
 
-    return ordered.slice(0, limit);
+    return score;
+}
+
+// AI 圈子上标签扩展：将圈子标签扩展为包含缩写、同义词的匹配词列表
+async function expandCircleLabelsWithAI(labels) {
+    if (!AI_ENABLED || !aiClient) return labels;
+    if (!Array.isArray(labels) || !labels.length) return labels;
+
+    const cacheKey = `circle_expand:${labels.sort().join(',')}`;
+    const cached = aiTagCache.get(cacheKey);
+    if (cached && Date.now() - cached.ts < AI_TAG_CACHE_TTL_MS) {
+        return cached.data;
+    }
+
+    const prompt = [
+        '将以下标签扩展为匹配用关键词列表。必须包含：',
+        '1. 原标签本身',
+        '2. 所有常见缩写/简称（如"通信原理"→"通原"、"人工智能"→"AI"、"机器学习"→"ML"）',
+        '3. 同义词和相关术语',
+        '返回严格JSON，不要解释。',
+        '{"expanded":["原标签","缩写1","缩写2","同义词1","同义词2",...]}',
+        '每个标签至少扩展3个词，总数不超过20个。',
+        `labels=${JSON.stringify(labels)}`
+    ].join('\n');
+
+    const timeoutPromise = new Promise((_, reject) => {
+        setTimeout(() => reject(new Error('AI_EXPAND_TIMEOUT')), AI_TIMEOUT_MS);
+    });
+
+    try {
+        const completion = await Promise.race([
+            aiClient.chat.completions.create({
+                model: DEEPSEEK_MODEL,
+                temperature: 0.1,
+                max_tokens: AI_TAG_MAX_TOKENS,
+                thinking: {"type": "disabled"},
+                messages: [
+                    { role: 'system', content: '你只输出JSON。' },
+                    { role: 'user', content: prompt }
+                ]
+            }),
+            timeoutPromise
+        ]);
+
+        const content = completion?.choices?.[0]?.message?.content || '';
+        const payload = extractJsonPayload(content);
+        if (payload && Array.isArray(payload.expanded) && payload.expanded.length) {
+            aiTagCache.set(cacheKey, { ts: Date.now(), data: payload.expanded });
+            return payload.expanded;
+        }
+    } catch (err) {
+        console.error('[AI circle expand error]', err.message);
+    }
+    return labels;
+}
+
+// AI 从帖子内容中提取特征标签
+async function extractContentTagsWithAI(title, content) {
+    if (!AI_ENABLED || !aiClient) return null;
+    const text = `${String(title || '').slice(0, 80)} ${String(content || '').slice(0, 200)}`.trim();
+    if (!text) return null;
+
+    const prompt = [
+        '从以下帖子内容中提取关键特征标签（技能、兴趣、话题）。',
+        '返回严格JSON，不要解释。',
+        '{"tags":["标签1","标签2",...]}',
+        '最多5个标签，每个标签不超过6个字。优先提取学科、技术、兴趣领域的简称和全称。',
+        `content=${text}`
+    ].join('\n');
+
+    const timeoutPromise = new Promise((_, reject) => {
+        setTimeout(() => reject(new Error('AI_TAG_TIMEOUT')), AI_TIMEOUT_MS);
+    });
+
+    try {
+        const completion = await Promise.race([
+            aiClient.chat.completions.create({
+                model: DEEPSEEK_MODEL,
+                temperature: 0.1,
+                max_tokens: AI_TAG_MAX_TOKENS,
+                thinking: {"type": "disabled"},
+                messages: [
+                    { role: 'system', content: '你只输出JSON。' },
+                    { role: 'user', content: prompt }
+                ]
+            }),
+            timeoutPromise
+        ]);
+        const resp = completion?.choices?.[0]?.message?.content || '';
+        const payload = extractJsonPayload(resp);
+        if (payload && Array.isArray(payload.tags)) return payload.tags.slice(0, 5);
+    } catch (err) {
+        console.error('[AI content tag extraction error]', err.message);
+    }
+    return null;
 }
 
 function campusValid(campus) {
     return ALLOWED_CAMPUSES.includes(campus);
+}
+
+function isAdmin(userName) {
+    if (!userName) return false;
+    const row = db.prepare("SELECT role FROM users WHERE name = ?").get(String(userName).trim());
+    return row && row.role === 'admin';
 }
 
 function extractMbtiFromText(text) {
@@ -1482,7 +1666,7 @@ app.get('/api/posts', (req, res) => {
     }
 });
 
-app.get('/api/posts/search-ai', (req, res) => {
+app.get('/api/posts/search-ai', async (req, res) => {
     const query = String(req.query.q || '').trim();
     const limit = Math.min(200, Math.max(1, Number(req.query.limit || 80)));
 
@@ -1491,23 +1675,66 @@ app.get('/api/posts/search-ai', (req, res) => {
     }
 
     try {
+        // Step 1: 启动 AI 扩展（异步，不阻塞本地搜索）
+        const aiPromise = (AI_ENABLED && aiClient)
+            ? expandSearchWithAI(query).catch(err => {
+                console.error('[AI search expansion error]', err.message);
+                return null;
+              })
+            : Promise.resolve(null);
+
+        // Step 2: 本地 TF + 余弦相似度 搜索（同步执行，与AI并行）
         const posts = db.prepare('SELECT id, title, content, post_labels, structured_tags, feature_vector, created_at FROM posts').all();
         const ranked = posts
             .map((post) => ({
                 id: post.id,
+                title: String(post.title || ''),
+                content: String(post.content || ''),
+                post_labels: parsePostLabels(post.post_labels),
+                _raw: post,
                 score: computePostSearchScore(post, query),
                 created_at: post.created_at
             }))
-            .filter((item) => item.score >= 0.08)
             .sort((a, b) => {
                 if (b.score !== a.score) return b.score - a.score;
                 return new Date(b.created_at || 0) - new Date(a.created_at || 0);
             })
-            .slice(0, limit)
-            .map((item) => ({ id: item.id, score: item.score }));
+            .slice(0, limit);
 
-        res.json({ success: true, ai_assisted: true, data: ranked });
+        // Step 3: 等待 AI 扩展结果（此时本地搜索已完成）
+        const searchTags = await aiPromise;
+        const aiExpanded = !!searchTags;
+
+        // Step 4: 如果AI返回了扩展词，用扩展词完全重新评分
+        if (searchTags && ranked.length > 0) {
+            const expandedQuery = [query, ...(searchTags.expanded_terms || []), ...(searchTags.related_skills || []), ...(searchTags.related_interests || [])].join(' ');
+            ranked.forEach(item => {
+                const expandedScore = computePostSearchScore(item._raw, expandedQuery);
+                const tagScore = computeSearchTagScore(`${item.title} ${item.content}`, item.post_labels, searchTags);
+                item.score = expandedScore * 0.6 + tagScore * 0.4;
+            });
+            ranked.sort((a, b) => b.score - a.score);
+        }
+
+        // 清理内部字段
+        ranked.forEach(item => { delete item._raw; });
+
+        const result = ranked.map(item => ({
+            id: item.id,
+            title: item.title,
+            score: item.score,
+            created_at: item.created_at
+        }));
+
+        res.json({
+            success: true,
+            ai_assisted: true,
+            ai_expanded: aiExpanded,
+            model: aiExpanded ? DEEPSEEK_MODEL : null,
+            data: result
+        });
     } catch (err) {
+        console.error('[search-ai error]', err);
         res.status(500).json({ success: false, message: '智能检索失败' });
     }
 });
@@ -1529,7 +1756,7 @@ app.get('/api/recommendations', (req, res) => {
             recall_count: context.recall_count,
             total_candidates: context.total_candidates,
             weights: RECOMMENDATION_WEIGHTS,
-            ai_rerank_enabled: AI_RERANK_ENABLED,
+            ai_rerank_enabled: AI_ENABLED,
             ai_used: false
         });
     } catch (err) {
@@ -1539,7 +1766,7 @@ app.get('/api/recommendations', (req, res) => {
     }
 });
 
-// AI 重排版推荐：先走现有规则召回排序，再交给 GLM 二次重排；失败时自动回退
+// AI 重排版推荐：先走现有规则召回排序，再交给 DeepSeek 二次重排；失败时自动回退
 app.get('/api/recommendations-ai', async (req, res) => {
     const currentUser = req.query.user;
     const limit = Math.min(30, Math.max(1, Number(req.query.limit || 8)));
@@ -1549,79 +1776,62 @@ app.get('/api/recommendations-ai', async (req, res) => {
     }
 
     try {
+        // Step 1: 规则召回 + 基础排序
         const context = buildRecommendationContext(currentUser);
-        const baseline = context.ranked.slice(0, limit);
-        const cacheKey = `${currentUser}:${limit}`;
-        const cached = aiRerankCache.get(cacheKey);
-        if (cached && Date.now() - cached.ts < AI_RERANK_CACHE_TTL_MS) {
-            return res.json({
-                success: true,
-                data: cached.data,
-                recall_count: context.recall_count,
-                total_candidates: context.total_candidates,
-                weights: RECOMMENDATION_WEIGHTS,
-                ai_rerank_enabled: true,
-                ai_used: true,
-                cache_hit: true,
-                fallback: false,
-                model: ZHIPU_MODEL
-            });
-        }
+        const candidates = context.ranked.slice(0, limit);
 
-        if (!AI_RERANK_ENABLED) {
-            return res.json({
-                success: true,
-                data: baseline,
-                recall_count: context.recall_count,
-                total_candidates: context.total_candidates,
-                weights: RECOMMENDATION_WEIGHTS,
-                ai_rerank_enabled: false,
-                ai_used: false,
-                fallback: true,
-                message: '未检测到 ZHIPU_API_KEY，已自动回退基础推荐。'
-            });
-        }
-
-        const candidatesForAI = context.ranked.slice(0, 12);
-        let reranked = null;
-        let aiErrorMessage = 'AI 重排暂时不可用，已自动回退基础推荐。';
-        try {
-            reranked = await rerankWithAI(context.user, candidatesForAI, limit);
-        } catch (aiErr) {
-            const isRateLimited = Number(aiErr && aiErr.status) === 429 || String((aiErr && aiErr.code) || '') === '1305';
-            if (isRateLimited) {
-                aiErrorMessage = 'AI 服务当前访问量过大，已自动回退基础推荐。';
+        // Step 2: AI 提取用户标签（缓存 5 分钟）
+        let aiTags = null;
+        let aiUsed = false;
+        if (AI_ENABLED && aiClient) {
+            try {
+                aiTags = await extractUserTagsWithAI(context.user);
+                if (aiTags) aiUsed = true;
+            } catch (aiErr) {
+                console.error('[AI tag extraction error]', aiErr.message);
             }
-            reranked = null;
         }
 
-        if (!reranked || !reranked.length) {
-            return res.json({
-                success: true,
-                data: baseline,
-                recall_count: context.recall_count,
-                total_candidates: context.total_candidates,
-                weights: RECOMMENDATION_WEIGHTS,
-                ai_rerank_enabled: true,
-                ai_used: false,
-                fallback: true,
-                message: aiErrorMessage
+        // Step 3: 用AI标签增强评分
+        if (aiTags) {
+            candidates.forEach(item => {
+                const labels = parsePostLabels(item.post_labels);
+                const postText = `${item.title || ''} ${item.content || ''} ${labels.join(' ')}`;
+                const { score: tagBoost, matchedTags } = computeTagOverlapScore(labels, postText, aiTags);
+
+                // 协作文模式匹配
+                if (aiTags.collaboration_mode === 'offline' && item.collaboration_mode === 'offline') { /* boost via matchedTags */ }
+                if (aiTags.collaboration_mode === 'online' && item.collaboration_mode === 'online') { /* boost via matchedTags */ }
+
+                // 跨校区偏好匹配
+                if (aiTags.cross_campus && item.accept_cross_campus === 1) { /* boost via matchedTags */ }
+
+                // 混合分数：70% 规则评分 + 30% AI标签增强
+                item.recommendation_score = (item.recommendation_score || 0) * 0.7 + Math.min(tagBoost * 0.15, 0.3);
+                if (matchedTags.length > 0) {
+                    const topTags = matchedTags.slice(0, 3);
+                    item.recommendation_reasons = (item.recommendation_reasons || []).slice(0, 1);
+                    item.recommendation_reasons.push(`核心标签 ${topTags.join('、')}`);
+                }
             });
-        }
 
-        aiRerankCache.set(cacheKey, { ts: Date.now(), data: reranked });
+            candidates.sort((a, b) => (b.recommendation_score || 0) - (a.recommendation_score || 0));
+        }
 
         return res.json({
             success: true,
-            data: reranked,
+            data: candidates,
             recall_count: context.recall_count,
             total_candidates: context.total_candidates,
             weights: RECOMMENDATION_WEIGHTS,
-            ai_rerank_enabled: true,
-            ai_used: true,
-            cache_hit: false,
-            fallback: false,
-            model: ZHIPU_MODEL
+            ai_enabled: AI_ENABLED,
+            ai_used: aiUsed,
+            model: aiUsed ? DEEPSEEK_MODEL : null,
+            ai_tags: aiTags ? {
+                skill_tags: aiTags.skill_tags,
+                interest_tags: aiTags.interest_tags,
+                preferred_types: aiTags.preferred_types
+            } : null
         });
     } catch (err) {
         const status = Number(err && err.statusCode) || 500;
@@ -1688,7 +1898,7 @@ app.post('/api/apply', (req, res) => {
     }
 });
 
-// 🌟 【新增：获取“我的收件箱”接口】(查看谁申请了我的帖子)
+// 🌟 【新增：获取"我的收件箱"接口】(查看谁申请了我的帖子)
 app.get('/api/my-messages', (req, res) => {
     // 从请求的 URL 里获取当前登录的用户名 (?user=xxx)
     const currentUser = req.query.user; 
@@ -1738,7 +1948,7 @@ app.delete('/api/posts/:id', (req, res) => {
         if (!normalizedAuthor) {
             return res.status(400).json({ success: false, message: '缺少作者信息' });
         }
-        if (normalizedPostAuthor !== normalizedAuthor) {
+        if (normalizedPostAuthor !== normalizedAuthor && !isAdmin(author)) {
             return res.status(403).json({ success: false, message: '警告：你没有权限删除别人的帖子！' });
         }
 
@@ -1816,6 +2026,50 @@ app.get('/api/profile/:username', (req, res) => {
     } catch (err) { res.status(500).json({ success: false }); }
 });
 
+// 头像上传（base64，限制 256KB）
+app.post('/api/users/avatar', (req, res) => {
+    const { user, avatar } = req.body;
+    if (!user || !avatar) return res.status(400).json({ success: false, message: '缺少参数' });
+    const base64 = String(avatar).trim();
+    if (!base64.startsWith('data:image/') || base64.length > 350000) {
+        return res.status(400).json({ success: false, message: '仅支持 256KB 以内的图片' });
+    }
+    try {
+        db.prepare('UPDATE users SET avatar = ? WHERE name = ?').run(base64, user);
+        res.json({ success: true, message: '头像已更新' });
+    } catch (err) {
+        res.status(500).json({ success: false, message: '头像更新失败' });
+    }
+});
+
+// 获取用户头像（JSON）
+app.get('/api/users/avatar/:name', (req, res) => {
+    const row = db.prepare('SELECT avatar FROM users WHERE name = ?').get(req.params.name);
+    if (row && row.avatar) return res.json({ success: true, avatar: row.avatar });
+    res.json({ success: true, avatar: null });
+});
+
+// 直接返回头像图片（供 <img> 标签使用）
+app.get('/api/users/avatar/:name/raw', (req, res) => {
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
+    res.setHeader('Timing-Allow-Origin', '*');
+    const name = decodeURIComponent(req.params.name || '').trim();
+    if (!name || name === 'undefined' || name === 'null') {
+        return res.status(404).json({ error: 'invalid username' });
+    }
+    const row = db.prepare('SELECT avatar FROM users WHERE name = ?').get(name);
+    if (row && row.avatar && row.avatar.startsWith('data:image/')) {
+        const [header, data] = [row.avatar.split(',')[0], row.avatar.split(',').slice(1).join(',')];
+        const mime = (header.match(/data:(image\/[^;]+)/) || [])[1] || 'image/png';
+        const buf = Buffer.from(data, 'base64');
+        res.setHeader('Content-Type', mime);
+        res.setHeader('Cache-Control', 'public, max-age=86400');
+        return res.send(buf);
+    }
+    res.status(404).json({ error: 'no avatar' });
+});
+
 // 2. 更新个人资料
 app.put('/api/profile', (req, res) => {
     const { name, department, grade, bio, portfolio, campus } = req.body;
@@ -1838,6 +2092,73 @@ app.put('/api/profile', (req, res) => {
         upsertUserFeatureStore(updatedUser);
         res.json({ success: true, message: '资料保存成功！' });
     } catch (err) { res.status(500).json({ success: false }); }
+});
+
+// 3.5 注销账户
+app.delete('/api/account', (req, res) => {
+    const { user, reason, feedback } = req.body;
+    if (!user || !user.trim()) return res.status(400).json({ success: false, message: '用户不能为空' });
+    const userName = user.trim();
+
+    try {
+        const account = db.prepare('SELECT * FROM users WHERE name = ?').get(userName);
+        if (!account) return res.status(404).json({ success: false, message: '用户不存在' });
+
+        // Log the deletion reason if provided
+        if (reason || feedback) {
+            db.prepare("INSERT INTO project_events (project_id, actor, event_type, title, detail, severity) VALUES (0, ?, 'account_deletion', '账户注销', ?, 'low')")
+                .run(userName, `理由: ${reason || '未提供'} | 反馈: ${feedback || '无'}`);
+        }
+
+        // Anonymize messages (replace sender name with "Deleted User")
+        db.prepare("UPDATE messages SET sender = 'Deleted User' WHERE sender = ?").run(userName);
+        db.prepare("UPDATE messages SET recipient = 'Deleted User' WHERE recipient = ? AND recipient NOT LIKE 'project:%'").run(userName);
+
+        // Remove from team memberships (projects stay, leader role transferred if needed)
+        const userProjects = db.prepare('SELECT project_id, role FROM team_members WHERE user_name = ?').all(userName);
+        for (const m of userProjects) {
+            if (m.role === 'leader') {
+                const nextMember = db.prepare("SELECT user_name FROM team_members WHERE project_id = ? AND user_name != ? ORDER BY CASE role WHEN 'core_member' THEN 1 ELSE 2 END LIMIT 1").get(m.project_id, userName);
+                if (nextMember) {
+                    db.prepare('UPDATE team_members SET role = ? WHERE project_id = ? AND user_name = ?').run('leader', m.project_id, nextMember.user_name);
+                    db.prepare('UPDATE team_projects SET owner = ? WHERE id = ?').run(nextMember.user_name, m.project_id);
+                }
+            }
+            db.prepare('DELETE FROM team_members WHERE project_id = ? AND user_name = ?').run(m.project_id, userName);
+        }
+
+        // Anonymize checkins, reviews, feedback
+        db.prepare("UPDATE checkins SET user_name = 'Deleted User' WHERE user_name = ?").run(userName);
+        db.prepare("UPDATE peer_scores SET reviewer = 'Deleted User' WHERE reviewer = ?").run(userName);
+        db.prepare("UPDATE peer_scores SET reviewee = 'Deleted User' WHERE reviewee = ?").run(userName);
+        db.prepare("UPDATE reviews SET reviewer = 'Deleted User' WHERE reviewer = ?").run(userName);
+        db.prepare("UPDATE reviews SET reviewee = 'Deleted User' WHERE reviewee = ?").run(userName);
+        db.prepare("UPDATE project_feedback SET author = 'Deleted User' WHERE author = ?").run(userName);
+        db.prepare("UPDATE project_events SET actor = 'Deleted User' WHERE actor = ?").run(userName);
+
+        // Anonymize community contributions
+        db.prepare("UPDATE community_posts SET author = 'Deleted User' WHERE author = ?").run(userName);
+        db.prepare("UPDATE community_comments SET author = 'Deleted User' WHERE author = ?").run(userName);
+
+        // Remove from circles
+        db.prepare('DELETE FROM circle_members WHERE user_name = ?').run(userName);
+
+        // Anonymize posts owned by this user
+        db.prepare("UPDATE posts SET author = 'Deleted User' WHERE author = ?").run(userName);
+
+        // Clean up user-related stores
+        db.prepare('DELETE FROM user_feature_store WHERE user_name = ?').run(userName);
+        db.prepare('DELETE FROM user_preference_profile WHERE user_name = ?').run(userName);
+        db.prepare('DELETE FROM recommendation_events WHERE user_name = ?').run(userName);
+
+        // Finally delete the user
+        db.prepare('DELETE FROM users WHERE name = ?').run(userName);
+
+        res.json({ success: true, message: '账户已注销。感谢你使用 CampusMatch。' });
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ success: false, message: '注销失败，请稍后重试' });
+    }
 });
 
 // 4. 审批报名（通过后自动入队）
@@ -1960,14 +2281,13 @@ app.get('/api/projects-preview', (req, res) => {
 // 6. 项目详情（成员、里程碑、打卡、评分看板）
 app.get('/api/projects/:id/detail', (req, res) => {
     const projectId = req.params.id;
-    const currentUser = req.query.user;
+    const currentUser = String(req.query.user || '').trim();
 
     try {
         const project = db.prepare('SELECT * FROM team_projects WHERE id = ?').get(projectId);
         if (!project) return res.status(404).json({ success: false, message: '项目不存在' });
-        if (!isProjectMember(projectId, currentUser)) {
-            return res.status(403).json({ success: false, message: '仅项目成员可查看协作详情' });
-        }
+        const isMember = currentUser && isProjectMember(projectId, currentUser);
+        const canManage = isMember && isProjectLeader(projectId, currentUser);
 
         const members = db.prepare(`
             SELECT user_name, role, joined_at
@@ -1993,12 +2313,85 @@ app.get('/api/projects/:id/detail', (req, res) => {
                 member_changes: memberChanges,
                 requirement_changes: requirementChanges,
                 scoreboard,
-                can_manage: isProjectLeader(projectId, currentUser),
-                is_member: true
+                can_manage: canManage,
+                is_member: isMember,
+                read_only: !isMember
             }
         });
     } catch (err) {
         res.status(500).json({ success: false, message: '获取项目详情失败' });
+    }
+});
+
+// 6.1 项目热力图数据（当月每日贡献汇总）
+app.get('/api/projects/:id/heatmap', (req, res) => {
+    const projectId = req.params.id;
+    const currentUser = req.query.user;
+    if (!isProjectMember(projectId, currentUser)) {
+        return res.status(403).json({ success: false, message: '仅项目成员可查看' });
+    }
+    try {
+        const now = new Date();
+        const year = now.getFullYear();
+        const month = String(now.getMonth() + 1).padStart(2, '0');
+        const monthStart = `${year}-${month}-01`;
+        const lastDay = new Date(year, now.getMonth() + 1, 0).getDate();
+
+        // Aggregate checkins by date and user for current month (only checkins count as contributions)
+        const checkinRows = db.prepare(`
+            SELECT user_name, DATE(created_at) as day, COUNT(*) as cnt
+            FROM checkins
+            WHERE project_id = ? AND DATE(created_at) >= ? AND DATE(created_at) <= ?
+            GROUP BY user_name, DATE(created_at)
+            ORDER BY DATE(created_at) ASC
+        `).all(projectId, monthStart, `${year}-${month}-${String(lastDay).padStart(2, '0')}`);
+
+        // Merge into daily map
+        const dailyMap = {};
+        for (let d = 1; d <= lastDay; d++) {
+            const key = `${year}-${month}-${String(d).padStart(2, '0')}`;
+            dailyMap[key] = { total: 0, members: {} };
+        }
+        for (const row of checkinRows) {
+            if (dailyMap[row.day]) {
+                dailyMap[row.day].total += row.cnt;
+                dailyMap[row.day].members[row.user_name] = (dailyMap[row.day].members[row.user_name] || 0) + row.cnt;
+            }
+        }
+
+        // Build grid: weeks x 7 days, Sun=0 .. Sat=6
+        const firstDay = new Date(year, now.getMonth(), 1);
+        const firstDow = firstDay.getDay(); // 0=Sun, 1=Mon, ..., 6=Sat
+        const startOffset = firstDow; // pad leading empty cells for days before the 1st
+
+        const grid = [];
+        let week = [];
+        for (let i = 0; i < startOffset; i++) week.push(null);
+        for (let d = 1; d <= lastDay; d++) {
+            const key = `${year}-${month}-${String(d).padStart(2, '0')}`;
+            const data = dailyMap[key] || { total: 0, members: {} };
+            week.push({ day: d, date: key, total: data.total, members: data.members });
+            if (week.length === 7) { grid.push(week); week = []; }
+        }
+        if (week.length > 0) {
+            while (week.length < 7) week.push(null);
+            grid.push(week);
+        }
+
+        // Overall month stats for scoring
+        const monthTotal = Object.values(dailyMap).reduce((s, d) => s + d.total, 0);
+
+        res.json({
+            success: true,
+            data: {
+                month: `${year}-${month}`,
+                days: lastDay,
+                grid,
+                total_contributions: monthTotal
+            }
+        });
+    } catch (err) {
+        res.status(500).json({ success: false, message: '获取热力图失败' });
     }
 });
 
@@ -2129,8 +2522,8 @@ app.put('/api/projects/:id/requirements/:rid', (req, res) => {
 // 6.8 成员调整：新增成员
 app.get('/api/projects/:id/members', (req, res) => {
     const projectId = req.params.id;
-    const currentUser = req.query.user;
-    if (!isProjectMember(projectId, currentUser)) {
+    const currentUser = String(req.query.user || '').trim();
+    if (!currentUser || !isProjectMember(projectId, currentUser)) {
         return res.status(403).json({ success: false, message: '仅项目成员可查看成员信息' });
     }
 
@@ -2254,6 +2647,79 @@ app.delete('/api/projects/:id/members/:memberName', (req, res) => {
     }
 });
 
+// 成员申请退出项目（含自评打分）
+app.post('/api/projects/:id/exit-requests', (req, res) => {
+    const projectId = req.params.id;
+    const { user, reason } = req.body;
+    if (!user) return res.status(400).json({ success: false, message: '缺少 user 参数' });
+    const member = db.prepare('SELECT * FROM team_members WHERE project_id = ? AND user_name = ?').get(projectId, user);
+    if (!member) return res.status(404).json({ success: false, message: '你不在该项目中' });
+    if (member.role === 'leader') return res.status(400).json({ success: false, message: '队长不能申请退出，请先转移队长' });
+
+    const pending = db.prepare('SELECT id FROM exit_requests WHERE project_id = ? AND user_name = ? AND status = ?').get(projectId, user, 'pending');
+    if (pending) return res.status(400).json({ success: false, message: '已有待处理的退出申请' });
+
+    try {
+        db.prepare('INSERT INTO exit_requests (project_id, user_name, reason, status) VALUES (?, ?, ?, ?)')
+            .run(projectId, user, String(reason || '').trim(), 'pending');
+        res.json({ success: true, message: '退出申请已提交，等待负责人审核' });
+    } catch (err) {
+        res.status(500).json({ success: false, message: '提交失败' });
+    }
+});
+
+// 查看项目的退出申请列表
+app.get('/api/projects/:id/exit-requests', (req, res) => {
+    const projectId = req.params.id;
+    try {
+        const rows = db.prepare('SELECT * FROM exit_requests WHERE project_id = ? ORDER BY created_at DESC').all(projectId);
+        res.json({ success: true, data: rows });
+    } catch (err) {
+        res.status(500).json({ success: false, message: '获取失败' });
+    }
+});
+
+// 负责人审核退出申请（approve/reject + 打分）
+app.put('/api/projects/:id/exit-requests/:requestId', (req, res) => {
+    const projectId = req.params.id;
+    const requestId = Number(req.params.requestId);
+    const { actor, action, rating } = req.body;
+
+    if (!isProjectLeader(projectId, actor)) return res.status(403).json({ success: false, message: '仅项目负责人可审核退出申请' });
+    if (!['approve', 'reject'].includes(action)) return res.status(400).json({ success: false, message: 'action 须为 approve 或 reject' });
+
+    try {
+        const reqRow = db.prepare('SELECT * FROM exit_requests WHERE id = ? AND project_id = ? AND status = ?').get(requestId, projectId, 'pending');
+        if (!reqRow) return res.status(404).json({ success: false, message: '申请不存在或已处理' });
+
+        if (action === 'approve') {
+            // 他人评价（leader评分）→ 写入 peer_scores + reviews，对齐结项互评系统
+            const finalRating = Math.min(5, Math.max(1, Number(rating) || 3));
+            db.prepare(`INSERT INTO peer_scores (project_id, reviewer, reviewee, score, comment)
+                VALUES (?, ?, ?, ?, ?)
+                ON CONFLICT(project_id, reviewer, reviewee)
+                DO UPDATE SET score = excluded.score, comment = excluded.comment, created_at = CURRENT_TIMESTAMP`)
+                .run(projectId, actor, reqRow.user_name, finalRating, `[中期退出] ${reqRow.reason || '无'}`);
+            db.prepare(`INSERT INTO reviews (reviewer, reviewee, rating, comment, project_id, objective_score, subjective_score, final_score)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)`)
+                .run(actor, reqRow.user_name, finalRating, `[中期退出] ${reqRow.reason || '无'}`, projectId, 0, finalRating * 20, finalRating * 8);
+            // 移除成员
+            db.prepare('DELETE FROM team_members WHERE project_id = ? AND user_name = ?').run(projectId, reqRow.user_name);
+            // 清理该成员的任务分配
+            db.prepare('UPDATE project_requirements SET assignee = NULL, updated_at = CURRENT_TIMESTAMP WHERE project_id = ? AND assignee = ? AND status != ?')
+                .run(projectId, reqRow.user_name, 'done');
+            db.prepare('UPDATE exit_requests SET status = ? WHERE id = ?').run('approved', requestId);
+            logProjectEvent(projectId, actor, 'member', '成员退出', `${reqRow.user_name} 已退出项目，leader评分 ${finalRating}/5`, 'medium');
+            res.json({ success: true, message: `已批准退出，评价 ${finalRating}/5 已录入` });
+        } else {
+            db.prepare('UPDATE exit_requests SET status = ? WHERE id = ?').run('rejected', requestId);
+            res.json({ success: true, message: '已拒绝退出申请' });
+        }
+    } catch (err) {
+        res.status(500).json({ success: false, message: '审核失败' });
+    }
+});
+
 // 7. 更新项目状态（生命周期：recruiting -> executing -> completed）
 app.put('/api/projects/:id/status', (req, res) => {
     const projectId = req.params.id;
@@ -2264,6 +2730,7 @@ app.put('/api/projects/:id/status', (req, res) => {
     try {
         const project = db.prepare('SELECT * FROM team_projects WHERE id = ?').get(projectId);
         if (!project) return res.status(404).json({ success: false, message: '项目不存在' });
+        if (project.status === 'completed') return res.status(400).json({ success: false, message: '已结项的项目无法修改状态' });
         if (!isProjectLeader(projectId, actor)) return res.status(403).json({ success: false, message: '仅队长可修改项目状态' });
 
         if (status === 'executing' && !project.started_at) {
@@ -2303,31 +2770,65 @@ app.post('/api/projects/:id/milestones', (req, res) => {
     }
 });
 
-// 9. 更新里程碑状态
+// 9. 更新里程碑（状态、标题、截止日期）
 app.put('/api/projects/:id/milestones/:mid', (req, res) => {
     const projectId = req.params.id;
     const milestoneId = req.params.mid;
-    const { actor, status } = req.body;
-    if (!['pending', 'completed'].includes(status)) {
-        return res.status(400).json({ success: false, message: '里程碑状态不合法' });
-    }
+    const { actor, status, title, due_date } = req.body;
 
     try {
-        if (!isProjectLeader(projectId, actor)) return res.status(403).json({ success: false, message: '仅队长可更新里程碑状态' });
+        if (!isProjectLeader(projectId, actor)) return res.status(403).json({ success: false, message: '仅队长可更新里程碑' });
         const milestone = db.prepare('SELECT * FROM milestones WHERE id = ? AND project_id = ?').get(milestoneId, projectId);
         if (!milestone) return res.status(404).json({ success: false, message: '里程碑不存在' });
 
-        if (status === 'completed') {
-            db.prepare('UPDATE milestones SET status = ?, completed_at = CURRENT_TIMESTAMP WHERE id = ?').run(status, milestoneId);
-        } else {
-            db.prepare('UPDATE milestones SET status = ?, completed_at = NULL WHERE id = ?').run(status, milestoneId);
+        // Build dynamic update
+        const sets = [];
+        const params = [];
+        if (status && ['pending', 'completed'].includes(status)) {
+            sets.push('status = ?');
+            params.push(status);
+            if (status === 'completed') {
+                sets.push('completed_at = CURRENT_TIMESTAMP');
+            } else {
+                sets.push('completed_at = NULL');
+            }
+        }
+        if (title !== undefined && title.trim()) {
+            sets.push('title = ?');
+            params.push(title.trim());
+        }
+        if (due_date !== undefined) {
+            sets.push('due_date = ?');
+            params.push(due_date || '');
+        }
+        if (sets.length > 0) {
+            params.push(milestoneId);
+            db.prepare(`UPDATE milestones SET ${sets.join(', ')} WHERE id = ?`).run(...params);
+            logProjectEvent(projectId, actor, 'milestone', '里程碑更新', `${milestone.title} 已更新`, 'low');
         }
 
-        logProjectEvent(projectId, actor, 'milestone', '里程碑状态更新', `${milestone.title} -> ${status}`, status === 'completed' ? 'medium' : 'low');
-
-        res.json({ success: true, message: '里程碑状态已更新' });
+        res.json({ success: true, message: '里程碑已更新' });
     } catch (err) {
         res.status(500).json({ success: false, message: '里程碑更新失败' });
+    }
+});
+
+// 9.1 删除里程碑
+app.delete('/api/projects/:id/milestones/:mid', (req, res) => {
+    const projectId = req.params.id;
+    const milestoneId = req.params.mid;
+    const { actor } = req.body;
+
+    try {
+        if (!isProjectLeader(projectId, actor)) return res.status(403).json({ success: false, message: '仅队长可删除里程碑' });
+        const milestone = db.prepare('SELECT * FROM milestones WHERE id = ? AND project_id = ?').get(milestoneId, projectId);
+        if (!milestone) return res.status(404).json({ success: false, message: '里程碑不存在' });
+
+        db.prepare('DELETE FROM milestones WHERE id = ?').run(milestoneId);
+        logProjectEvent(projectId, actor, 'milestone', '里程碑删除', `${milestone.title} 已删除`, 'medium');
+        res.json({ success: true, message: '里程碑已删除' });
+    } catch (err) {
+        res.status(500).json({ success: false, message: '里程碑删除失败' });
     }
 });
 
@@ -2335,19 +2836,16 @@ app.put('/api/projects/:id/milestones/:mid', (req, res) => {
 app.post('/api/projects/:id/checkins', (req, res) => {
     const projectId = req.params.id;
     const { user, progress_note, task_completion } = req.body;
-    const completion = Number(task_completion);
+    const completion = Number(task_completion) || 0;
 
     if (!isProjectMember(projectId, user)) {
         return res.status(403).json({ success: false, message: '仅已加入队伍的成员可打卡' });
     }
-    if (Number.isNaN(completion) || completion < 0 || completion > 100) {
-        return res.status(400).json({ success: false, message: '任务完成度需为 0-100 之间的数字' });
-    }
 
     try {
         db.prepare('INSERT INTO checkins (project_id, user_name, progress_note, attendance, task_completion) VALUES (?, ?, ?, 1, ?)')
-            .run(projectId, user, (progress_note || '').trim(), completion);
-        logProjectEvent(projectId, user, 'checkin', '成员打卡', `完成度 ${completion}%`, completion < 40 ? 'high' : 'low');
+            .run(projectId, user, (progress_note || '').trim(), Math.min(100, Math.max(0, completion)));
+        logProjectEvent(projectId, user, 'checkin', '成员打卡', progress_note || '打卡', 'low');
         res.json({ success: true, message: '打卡成功' });
     } catch (err) {
         res.status(500).json({ success: false, message: '打卡失败' });
@@ -2442,15 +2940,13 @@ app.post('/api/projects/:id/feedback', (req, res) => {
 // 10.10 获取反馈列表
 app.get('/api/projects/:id/feedback', (req, res) => {
     const projectId = req.params.id;
-    const currentUser = req.query.user;
+    const currentUser = String(req.query.user || '').trim();
 
-    if (!isProjectMember(projectId, currentUser)) {
-        return res.status(403).json({ success: false, message: '仅成员可查看反馈' });
-    }
+    const isMember = currentUser && isProjectMember(projectId, currentUser);
 
     try {
         const rows = db.prepare('SELECT * FROM project_feedback WHERE project_id = ? ORDER BY created_at DESC').all(projectId);
-        res.json({ success: true, data: rows, can_manage: isProjectLeader(projectId, currentUser) });
+        res.json({ success: true, data: rows, can_manage: isMember && isProjectLeader(projectId, currentUser), read_only: !isMember });
     } catch (err) {
         res.status(500).json({ success: false, message: '获取反馈失败' });
     }
@@ -2632,8 +3128,6 @@ function resolveCircleProposal(proposalId) {
     const insert = db.prepare('INSERT INTO community_circles (name, description, creator) VALUES (?, ?, ?)')
         .run(proposal.name, proposal.description, proposal.proposer);
     const circleId = insert.lastInsertRowid;
-    db.prepare('INSERT OR IGNORE INTO circle_members (circle_id, user_name, role) VALUES (?, ?, ?)')
-        .run(circleId, proposal.proposer, 'owner');
 
     db.prepare("UPDATE circle_proposals SET status = 'approved', approved_circle_id = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?")
         .run(circleId, proposalId);
@@ -2654,6 +3148,22 @@ app.post('/api/circles', (req, res) => {
         const exists = db.prepare('SELECT id FROM community_circles WHERE name = ?').get(circleName);
         if (exists) {
             return res.status(400).json({ success: false, message: '该圈子已存在' });
+        }
+
+        // 超管可直接创建圈子，无需公示
+        if (isAdmin(creator)) {
+            const category = String(req.body.category || 'Social').trim();
+            const circleLabels = String(req.body.labels || circleName).trim();
+            const insertResult = db.prepare(`
+                INSERT INTO community_circles (name, description, creator, category, labels, is_public, created_at)
+                VALUES (?, ?, ?, ?, ?, 1, datetime('now'))
+            `).run(circleName, circleDescription, creator, category, circleLabels);
+            const circleId = insertResult.lastInsertRowid;
+            return res.json({
+                success: true,
+                message: '管理员已直接创建圈子',
+                data: { circle_id: circleId, is_admin_create: true }
+            });
         }
 
         const pending = db.prepare("SELECT id FROM circle_proposals WHERE name = ? AND status = 'pending'").get(circleName);
@@ -2760,66 +3270,150 @@ app.post('/api/circle-proposals/:id/support', (req, res) => {
     }
 });
 
+app.delete('/api/circle-proposals/:id', (req, res) => {
+    const proposalId = Number(req.params.id);
+    const { user } = req.body;
+    if (!user || !proposalId) return res.status(400).json({ success: false, message: '缺少必要参数' });
+
+    try {
+        const proposal = db.prepare('SELECT * FROM circle_proposals WHERE id = ?').get(proposalId);
+        if (!proposal) return res.status(404).json({ success: false, message: '提案不存在' });
+        if (proposal.proposer !== user && !isAdmin(user)) return res.status(403).json({ success: false, message: '仅提案发起者或管理员可删除' });
+
+        db.prepare('DELETE FROM circle_proposal_supports WHERE proposal_id = ?').run(proposalId);
+        db.prepare('DELETE FROM circle_proposals WHERE id = ?').run(proposalId);
+        res.json({ success: true, message: '提案已删除' });
+    } catch (err) {
+        res.status(500).json({ success: false, message: '删除失败' });
+    }
+});
+
+// AI 圈子推荐：基于用户标签匹配圈子
+app.get('/api/circles/recommendations', async (req, res) => {
+    const currentUser = req.query.user;
+    const limit = Math.min(20, Math.max(1, Number(req.query.limit || 6)));
+    if (!currentUser) return res.status(400).json({ success: false, message: '缺少 user 参数' });
+
+    try {
+        const user = db.prepare('SELECT name, skills, interests, bio, department, grade, campus FROM users WHERE name = ?').get(currentUser);
+        if (!user) return res.status(404).json({ success: false, message: '用户不存在' });
+
+        // AI 提取用户标签
+        let aiTags = null;
+        let aiUsed = false;
+        if (AI_ENABLED && aiClient) {
+            try {
+                aiTags = await extractUserTagsWithAI(user);
+                if (aiTags) aiUsed = true;
+            } catch (e) { /* fall through */ }
+        }
+
+        const circles = db.prepare('SELECT * FROM community_circles WHERE is_public = 1').all();
+        const scored = circles.map(circle => {
+            const circleLabels = (circle.labels || circle.name || '').split(/[,，\s]+/).filter(Boolean);
+            const circleText = `${circle.name || ''} ${circle.description || ''} ${circleLabels.join(' ')}`.toLowerCase();
+            let score = 0;
+            const matchedTags = [];
+
+            // 用户原始标签匹配
+            const userSkills = String(user.skills || '').split(/[,，\s]+/).filter(Boolean);
+            const userInterests = String(user.interests || '').split(/[,，\s]+/).filter(Boolean);
+            [...userSkills, ...userInterests].forEach(tag => {
+                if (circleText.includes(tag.toLowerCase())) { score += 1; matchedTags.push(tag); }
+            });
+
+            // AI标签匹配（权重更高）
+            if (aiTags) {
+                [...(aiTags.skill_tags || []), ...(aiTags.interest_tags || []), ...(aiTags.preferred_types || [])].forEach(tag => {
+                    if (circleText.includes(tag.toLowerCase())) { score += 1.5; if (!matchedTags.includes(tag)) matchedTags.push(tag); }
+                });
+            }
+
+            return {
+                ...circle,
+                score,
+                matched_tags: matchedTags.slice(0, 5),
+                member_count: (db.prepare('SELECT COUNT(*) AS c FROM circle_members WHERE circle_id = ?').get(circle.id)?.c) || 0
+            };
+        });
+
+        scored.sort((a, b) => b.score - a.score);
+        const top = scored.slice(0, limit).filter(c => c.score > 0);
+
+        res.json({
+            success: true,
+            ai_used: aiUsed,
+            model: aiUsed ? DEEPSEEK_MODEL : null,
+            data: top
+        });
+    } catch (err) {
+        res.status(500).json({ success: false, message: '圈子推荐失败' });
+    }
+});
+
 app.get('/api/circles', (req, res) => {
     const currentUser = req.query.user;
     try {
         const rows = db.prepare(`
-            SELECT c.*, COUNT(cm.id) AS member_count
+            SELECT c.*,
+                (SELECT COUNT(*) FROM community_posts WHERE circle_id = c.id) AS direct_post_count
             FROM community_circles c
-            LEFT JOIN circle_members cm ON cm.circle_id = c.id
-            GROUP BY c.id
+            WHERE c.is_public = 1
             ORDER BY c.created_at DESC
         `).all();
 
-        const joinedSet = new Set();
-        if (currentUser) {
-            const joined = db.prepare('SELECT circle_id FROM circle_members WHERE user_name = ?').all(currentUser);
-            joined.forEach((row) => joinedSet.add(Number(row.circle_id)));
-        }
+        // 计算标签匹配帖子的数量（含标题+内容匹配）
+        const allMainPosts = db.prepare('SELECT post_labels, title, content FROM posts').all();
+        const allOrphanCP = db.prepare("SELECT tags, title, content FROM community_posts WHERE circle_id IS NULL").all();
 
-        const data = rows.map((row) => ({
-            ...row,
-            member_count: Number(row.member_count || 0),
-            joined: joinedSet.has(Number(row.id))
-        }));
+        const data = rows.map((row) => {
+            const circleLabels = String(row.labels || row.name || '').split(/[,，\s]+/).filter(Boolean).map(l => l.toLowerCase());
+            let tagMatchCount = 0;
+
+            if (circleLabels.length > 0) {
+                allMainPosts.forEach(p => {
+                    const labels = parsePostLabels(p.post_labels).map(l => l.toLowerCase());
+                    const text = `${p.title || ''} ${p.content || ''}`.toLowerCase();
+                    if (circleLabels.some(tag => labels.includes(tag) || text.includes(tag))) tagMatchCount++;
+                });
+                allOrphanCP.forEach(p => {
+                    const tags = safeJsonParse(p.tags, []).map(l => l.toLowerCase());
+                    const text = `${p.title || ''} ${p.content || ''}`.toLowerCase();
+                    if (circleLabels.some(tag => tags.includes(tag) || text.includes(tag))) tagMatchCount++;
+                });
+            }
+
+            return {
+                ...row,
+                post_count: Number(row.direct_post_count || 0) + tagMatchCount
+            };
+        });
         res.json({ success: true, data });
     } catch (err) {
         res.status(500).json({ success: false, message: '获取圈子列表失败' });
     }
 });
 
-app.post('/api/circles/:id/join', (req, res) => {
-    const circleId = req.params.id;
+// 超管删除圈子（级联清理）
+app.delete('/api/circles/:id', (req, res) => {
+    const circleId = Number(req.params.id);
     const { user } = req.body;
-    if (!user) return res.status(400).json({ success: false, message: '缺少 user 参数' });
+    if (!user || !circleId) return res.status(400).json({ success: false, message: '缺少必要参数' });
+    if (!isAdmin(user)) return res.status(403).json({ success: false, message: '仅管理员可删除圈子' });
 
     try {
         const circle = db.prepare('SELECT id FROM community_circles WHERE id = ?').get(circleId);
         if (!circle) return res.status(404).json({ success: false, message: '圈子不存在' });
 
-        db.prepare('INSERT OR IGNORE INTO circle_members (circle_id, user_name, role) VALUES (?, ?, ?)')
-            .run(circleId, user, 'member');
-        res.json({ success: true, message: '已加入圈子' });
+        db.prepare('DELETE FROM community_posts WHERE circle_id = ?').run(circleId);
+        db.prepare('DELETE FROM community_circles WHERE id = ?').run(circleId);
+        res.json({ success: true, message: '圈子已删除' });
     } catch (err) {
-        res.status(500).json({ success: false, message: '加入圈子失败' });
+        res.status(500).json({ success: false, message: '删除圈子失败' });
     }
 });
 
-app.delete('/api/circles/:id/join', (req, res) => {
-    const circleId = req.params.id;
-    const { user } = req.body;
-    if (!user) return res.status(400).json({ success: false, message: '缺少 user 参数' });
-
-    try {
-        db.prepare("DELETE FROM circle_members WHERE circle_id = ? AND user_name = ? AND role != 'owner'")
-            .run(circleId, user);
-        res.json({ success: true, message: '已退出圈子' });
-    } catch (err) {
-        res.status(500).json({ success: false, message: '退出圈子失败' });
-    }
-});
-
-app.post('/api/community/posts', (req, res) => {
+app.post('/api/community/posts', async (req, res) => {
     const { author, circle_id, title, content, project_id } = req.body;
     const normalizedTitle = String(title || '').trim();
     const normalizedContent = String(content || '').trim();
@@ -2831,14 +3425,35 @@ app.post('/api/community/posts', (req, res) => {
 
     try {
         if (circle_id) {
-            const isMember = db.prepare('SELECT id FROM circle_members WHERE circle_id = ? AND user_name = ?').get(circle_id, author);
-            if (!isMember) return res.status(403).json({ success: false, message: '加入圈子后才能在圈内发帖' });
+            const circleExists = db.prepare('SELECT id FROM community_circles WHERE id = ?').get(circle_id);
+            if (!circleExists) return res.status(404).json({ success: false, message: '圈子不存在' });
         }
 
         if (project_id) {
             const project = db.prepare('SELECT * FROM team_projects WHERE id = ?').get(project_id);
             if (!project) return res.status(404).json({ success: false, message: '关联项目不存在' });
             if (!isProjectMember(project_id, author)) return res.status(403).json({ success: false, message: '仅项目成员可关联该项目' });
+        }
+
+        // 自动标签：如果发在圈子里，继承圈子的标签
+        let autoTags = [];
+        if (circle_id) {
+            const circle = db.prepare('SELECT labels FROM community_circles WHERE id = ?').get(circle_id);
+            if (circle && circle.labels) {
+                autoTags = String(circle.labels).split(/[,，\s]+/).filter(Boolean);
+            }
+        }
+        // 从标题和内容中提取标签（固定词汇+AI扩展）
+        const contentTags = extractTagsFromText(normalizedTitle + ' ' + normalizedContent);
+        // AI 提取内容特征标签（异步，不阻塞发布）
+        const allTags = [...new Set([...contentTags.skills, ...contentTags.interests, ...autoTags])];
+        if (AI_ENABLED && aiClient && allTags.length < 3) {
+            try {
+                const aiContentTags = await extractContentTagsWithAI(normalizedTitle, normalizedContent);
+                if (aiContentTags && aiContentTags.length) {
+                    aiContentTags.forEach(t => { if (!allTags.includes(t)) allTags.push(t); });
+                }
+            } catch (_) { /* non-blocking */ }
         }
 
         const result = db.prepare(`
@@ -2851,12 +3466,31 @@ app.post('/api/community/posts', (req, res) => {
             normalizedContent,
             normalizedType,
             project_id || null,
-            '[]'
+            JSON.stringify(allTags)
         );
 
         res.json({ success: true, message: '发布成功', data: { id: result.lastInsertRowid } });
     } catch (err) {
         res.status(500).json({ success: false, message: '社区发帖失败' });
+    }
+});
+
+// AI 重提取已有帖子的特征标签（修复历史帖子tags为空的问题）
+app.post('/api/community/posts/retag', async (req, res) => {
+    if (!AI_ENABLED || !aiClient) return res.json({ success: false, message: 'AI未启用' });
+    try {
+        const posts = db.prepare("SELECT id, title, content FROM community_posts WHERE tags = '[]' OR tags IS NULL LIMIT 5").all();
+        let updated = 0;
+        for (const post of posts) {
+            const aiTags = await extractContentTagsWithAI(post.title, post.content);
+            if (aiTags && aiTags.length) {
+                db.prepare('UPDATE community_posts SET tags = ? WHERE id = ?').run(JSON.stringify(aiTags), post.id);
+                updated++;
+            }
+        }
+        res.json({ success: true, message: `已更新 ${updated} 条帖子的标签`, updated });
+    } catch (err) {
+        res.status(500).json({ success: false, message: '重标签失败' });
     }
 });
 
@@ -2970,21 +3604,149 @@ app.get('/api/community/recommendations', (req, res) => {
 });
 
 // 17. 圈子 Feed
-app.get('/api/circles/:id/feed', (req, res) => {
+app.get('/api/circles/:id/feed', async (req, res) => {
     const circleId = req.params.id;
     const limit = Math.min(60, Math.max(1, Number(req.query.limit || 20)));
     try {
-        const rows = db.prepare(`
-            SELECT cp.*, cc.name AS circle_name
+        // 1. 直接发在圈子里的帖子
+        const directPosts = db.prepare(`
+            SELECT cp.*, cc.name AS circle_name, 'direct' AS source
             FROM community_posts cp
             LEFT JOIN community_circles cc ON cc.id = cp.circle_id
             WHERE cp.circle_id = ?
             ORDER BY cp.created_at DESC
             LIMIT ?
         `).all(circleId, limit);
-        res.json({ success: true, data: rows.map((row) => ({ ...row, tags: safeJsonParse(row.tags, []) })) });
+
+        // 2. 主帖中标签匹配圈子标签的帖子（AI扩展标签以匹配缩写/同义词）
+        const circle = db.prepare('SELECT labels, name FROM community_circles WHERE id = ?').get(circleId);
+        const rawLabels = circle ? String(circle.labels || circle.name || '').split(/[,，\s]+/).filter(Boolean) : [];
+        const expandedLabels = await expandCircleLabelsWithAI(rawLabels);
+        const matchLabels = expandedLabels.map(l => l.toLowerCase());
+
+        let tagMatchedPosts = [];
+        if (matchLabels.length > 0) {
+            // 搜索主帖（dashboard帖子）
+            const allPosts = db.prepare('SELECT * FROM posts ORDER BY created_at DESC LIMIT 200').all();
+            // 也搜索未归属圈子的社区帖子
+            const orphanCommunityPosts = db.prepare('SELECT * FROM community_posts WHERE circle_id IS NULL ORDER BY created_at DESC LIMIT 200').all();
+
+            const matchPost = (post, from) => {
+                const postLabels = (from === 'posts' ? parsePostLabels(post.post_labels) : safeJsonParse(post.tags || '[]', [])).map(l => l.toLowerCase());
+                const postText = `${post.title || ''} ${post.content || ''}`.toLowerCase();
+                return matchLabels.some(tag => postLabels.includes(tag) || postText.includes(tag));
+            };
+
+            const matched = [
+                ...allPosts.filter(p => matchPost(p, 'posts')).map(post => ({
+                    id: post.id,
+                    author: post.author,
+                    title: post.title,
+                    content: post.content,
+                    created_at: post.created_at,
+                    post_type: post.type,
+                    tags: parsePostLabels(post.post_labels),
+                    circle_name: circle?.name || '',
+                    source: 'tag_match',
+                    _from_main: true
+                })),
+                ...orphanCommunityPosts.filter(p => matchPost(p, 'community')).map(post => ({
+                    id: post.id,
+                    author: post.author,
+                    title: post.title,
+                    content: post.content,
+                    created_at: post.created_at,
+                    post_type: post.post_type || 'discussion',
+                    tags: safeJsonParse(post.tags || '[]', []),
+                    circle_name: circle?.name || '',
+                    source: 'tag_match',
+                    _from_community: true
+                }))
+            ];
+
+            // 去重（按title+content去重）
+            const seen = new Set(directPosts.map(p => `${p.title}|${p.content}`));
+            tagMatchedPosts = matched.filter(p => {
+                const key = `${p.title}|${p.content}`;
+                if (seen.has(key)) return false;
+                seen.add(key);
+                return true;
+            }).slice(0, limit);
+        }
+
+        // 合并：直接帖子优先，标签匹配帖子补充（去重）
+        const directIds = new Set(directPosts.map(p => p.id));
+        const merged = [...directPosts, ...tagMatchedPosts.filter(p => !directIds.has(p.id))].slice(0, limit);
+
+        res.json({
+            success: true,
+            data: merged.map(row => ({
+                ...row,
+                tags: Array.isArray(row.tags) ? row.tags : safeJsonParse(row.tags || '[]', [])
+            }))
+        });
     } catch (err) {
         res.status(500).json({ success: false, message: '获取圈子流失败' });
+    }
+});
+
+// Trending Topics：从结构化特征标签中提取热门话题
+app.get('/api/trending-topics', (req, res) => {
+    const limit = Math.min(30, Math.max(1, Number(req.query.limit || 15)));
+    try {
+        const systemLabels = new Set([
+            '寻人组队', '提供技能', '项目招募', '竞赛组队', '学习小组', '技术交流', '社交活动',
+            'online', 'offline', 'both', 'discussion', 'question', 'showcase'
+        ]);
+
+        const tagCount = new Map();
+        const addTag = (t) => {
+            const tag = String(t).trim();
+            if (tag && tag.length < 20 && !systemLabels.has(tag) && !systemLabels.has(tag.toLowerCase())) {
+                tagCount.set(tag, (tagCount.get(tag) || 0) + 1);
+            }
+        };
+
+        // 主帖特征标签（structured_tags.skills + interests）
+        const posts = db.prepare('SELECT structured_tags FROM posts').all();
+        posts.forEach(p => {
+            const st = safeJsonParse(p.structured_tags, {});
+            (st.skills || []).forEach(addTag);
+            (st.interests || []).forEach(addTag);
+        });
+
+        // 社区帖子特征标签
+        const cp = db.prepare('SELECT tags FROM community_posts').all();
+        cp.forEach(p => {
+            const tags = safeJsonParse(p.tags, []);
+            tags.forEach(addTag);
+        });
+
+        const sorted = [...tagCount.entries()]
+            .sort((a, b) => b[1] - a[1])
+            .slice(0, limit)
+            .map(([tag, count]) => ({ tag, count }));
+
+        res.json({ success: true, data: sorted });
+    } catch (err) {
+        res.status(500).json({ success: false, message: '获取热门话题失败' });
+    }
+});
+
+// 删除社区帖子（作者或超管）
+app.delete('/api/community/posts/:id', (req, res) => {
+    const postId = Number(req.params.id);
+    const { user } = req.body;
+    if (!user || !postId) return res.status(400).json({ success: false, message: '缺少必要参数' });
+    try {
+        const post = db.prepare('SELECT author FROM community_posts WHERE id = ?').get(postId);
+        if (!post) return res.status(404).json({ success: false, message: '帖子不存在' });
+        if (post.author !== user && !isAdmin(user)) return res.status(403).json({ success: false, message: '仅作者或管理员可删除' });
+        db.prepare('DELETE FROM community_comments WHERE post_id = ?').run(postId);
+        db.prepare('DELETE FROM community_posts WHERE id = ?').run(postId);
+        res.json({ success: true, message: '帖子已删除' });
+    } catch (err) {
+        res.status(500).json({ success: false, message: '删除失败' });
     }
 });
 
@@ -3062,21 +3824,109 @@ app.post('/api/community/posts/:id/like', (req, res) => {
 });
 
 // 🌟 【新增：获取私聊对话历史】
+app.get('/api/message-threads', (req, res) => {
+    const { user } = req.query;
+    if (!user) {
+        return res.status(400).json({ success: false, message: '缺少用户参数' });
+    }
+
+    try {
+        // Personal threads (1-on-1)
+        const stmt = db.prepare(`
+            SELECT
+                CASE WHEN sender = ? THEN recipient ELSE sender END AS peer,
+                MAX(created_at) AS last_at
+            FROM messages
+            WHERE (sender = ? OR recipient = ?)
+              AND recipient NOT LIKE 'project:%' AND sender NOT LIKE 'project:%'
+            GROUP BY peer
+            ORDER BY last_at DESC
+        `);
+        const personalThreads = stmt.all(user, user, user).map((thread) => {
+            const latest = db.prepare(`
+                SELECT sender, recipient, message, created_at, read
+                FROM messages
+                WHERE (sender = ? AND recipient = ?) OR (sender = ? AND recipient = ?)
+                ORDER BY created_at DESC LIMIT 1
+            `).get(user, thread.peer, thread.peer, user);
+            const unread = db.prepare(`
+                SELECT COUNT(*) AS count FROM messages
+                WHERE sender = ? AND recipient = ? AND read = 0
+            `).get(thread.peer, user);
+            return {
+                peer: thread.peer,
+                last_at: latest?.created_at || thread.last_at,
+                last_message: latest?.message || '',
+                last_sender: latest?.sender || '',
+                unread_count: unread?.count || 0,
+                type: 'user'
+            };
+        });
+
+        // Project group threads — bound to project membership, not message existence
+        const userProjects = db.prepare(`
+            SELECT tp.id, tp.title, tp.created_at
+            FROM team_projects tp
+            JOIN team_members tm ON tm.project_id = tp.id
+            WHERE tm.user_name = ?
+            ORDER BY tp.created_at DESC
+        `).all(user);
+
+        const projectThreads = userProjects.map((proj) => {
+            const peer = 'project:' + proj.id;
+            const latest = db.prepare(`
+                SELECT sender, message, created_at FROM messages
+                WHERE recipient = ? ORDER BY created_at DESC LIMIT 1
+            `).get(peer);
+            return {
+                peer,
+                peer_label: proj.title || ('Project #' + proj.id),
+                last_at: latest?.created_at || proj.created_at,
+                last_message: latest?.message || 'Project channel ready',
+                last_sender: latest?.sender || '',
+                unread_count: 0,
+                type: 'project'
+            };
+        });
+
+        // Merge and sort
+        const all = [...personalThreads, ...projectThreads].sort((a, b) => {
+            const da = new Date(a.last_at || 0);
+            const db_ = new Date(b.last_at || 0);
+            return db_ - da;
+        });
+
+        res.json({ success: true, data: all });
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ success: false, message: '获取消息列表失败' });
+    }
+});
+
 app.get('/api/conversation', (req, res) => {
     const { user, with: withUser } = req.query;
-    
+
     if (!user || !withUser) {
         return res.status(400).json({ success: false, message: '缺少必要参数' });
     }
-    
+
     try {
-        // 获取两人之间的所有对话（双向）
-        const stmt = db.prepare(`
-            SELECT * FROM messages 
-            WHERE (sender = ? AND recipient = ?) OR (sender = ? AND recipient = ?)
-            ORDER BY created_at ASC
-        `);
-        const messages = stmt.all(user, withUser, withUser, user);
+        let messages;
+        if (String(withUser).startsWith('project:')) {
+            // Project group chat: get all messages for this project
+            messages = db.prepare(`
+                SELECT * FROM messages
+                WHERE recipient = ?
+                ORDER BY created_at ASC
+            `).all(withUser);
+        } else {
+            // 1-on-1 chat
+            messages = db.prepare(`
+                SELECT * FROM messages
+                WHERE (sender = ? AND recipient = ?) OR (sender = ? AND recipient = ?)
+                ORDER BY created_at ASC
+            `).all(user, withUser, withUser, user);
+        }
         res.json({ success: true, data: messages });
     } catch (err) {
         console.error(err);
@@ -3084,14 +3934,22 @@ app.get('/api/conversation', (req, res) => {
     }
 });
 
-// 🌟 【新增：发送私信】
+// 🌟 【新增：发送私信（支持个人和项目群聊）】
 app.post('/api/messages', (req, res) => {
     const { sender, recipient, message } = req.body;
-    
+
     if (!sender || !recipient || !message) {
         return res.status(400).json({ success: false, message: '缺少必要参数' });
     }
-    
+
+    // For project chats, validate sender is a project member
+    if (String(recipient).startsWith('project:')) {
+        const projectId = parseInt(recipient.replace('project:', ''), 10);
+        if (!projectId || !isProjectMember(projectId, sender)) {
+            return res.status(403).json({ success: false, message: '仅项目成员可在项目频道发言' });
+        }
+    }
+
     try {
         const stmt = db.prepare("INSERT INTO messages (sender, recipient, message) VALUES (?, ?, ?)");
         stmt.run(sender, recipient, message);
@@ -3120,6 +3978,7 @@ app.put('/api/posts/:id/view', (req, res) => {
 // 启动服务器
 const port = 3000;
 app.listen(port, () => {
-    console.log(`🚀 后端服务器已启动！运行在 http://localhost:${port}`);
-    console.log(`📦 已成功使用 Node.js 原生 SQLite 数据库！`);
+    console.log(`🚀 后端服务器已启动，运行在 http://localhost:${port}`);
+    console.log(`📦 使用 Node.js 原生 SQLite 数据库`);
+    console.log(`🤖 AI 标签匹配: ${AI_ENABLED ? `enabled (model=${DEEPSEEK_MODEL}, timeout=${AI_TIMEOUT_MS}ms, tag_max_tokens=${AI_TAG_MAX_TOKENS})` : 'disabled (no API key)'}`);
 });

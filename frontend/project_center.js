@@ -1,14 +1,14 @@
+/* ── Collaborative Hub - Project Center ── */
 const currentUser = localStorage.getItem('currentUser');
 const urlParams = new URLSearchParams(window.location.search);
 const preferredProjectId = Number(urlParams.get('project') || 0);
 
-const DEFAULT_VIEW_ORDER = ['overview', 'issues', 'members', 'activity', 'checkins'];
 const VIEW_META = {
-    overview: { label: '概览', hint: '总览和快捷操作' },
-    issues: { label: '帖子', hint: '像在大厅里发帖子那样管理' },
-    members: { label: '成员', hint: '中途调人和角色管理' },
-    activity: { label: '协作', hint: '像 GitHub issue 一样发协作贴' },
-    checkins: { label: '打卡', hint: '单独放到独立页面' }
+    overview: { label: 'Overview' },
+    issues: { label: 'Requirements' },
+    members: { label: 'Members' },
+    activity: { label: 'Collaboration' },
+    checkins: { label: 'Check-ins' }
 };
 
 const state = {
@@ -16,975 +16,875 @@ const state = {
     activeProjectId: null,
     activeProjectDetail: null,
     activeView: 'overview',
-    viewOrder: [...DEFAULT_VIEW_ORDER],
-    draftsByProject: {},
-    filters: {
-        issueStatus: 'all',
-        issueSort: 'recent',
-        activityStatus: 'all'
-    }
+    drafts: {}
 };
 
-let draggedViewKey = '';
-
-        const DRAFT_FIELD_IDS = [
-            'new-req-title',
-            'new-req-desc',
-            'new-req-priority',
-            'new-req-assignee',
-            'collab-title',
-            'collab-body',
-            'collab-target',
-            'checkin-note',
-            'checkin-completion',
-            'new-member-name',
-            'new-member-role',
-            'rating-reviewee',
-            'rating-comment'
-        ];
-
-        function statusLabel(status) {
-            if (status === 'recruiting') return '招募中';
-            if (status === 'executing') return '执行中';
-            if (status === 'completed') return '已结项';
-            return status || '未知';
-        }
-
-        function roleLabel(role) {
-            if (role === 'leader') return '负责人';
-            if (role === 'core_member') return '核心成员';
-            return '普通成员';
-        }
-
-function requirementStatusLabel(status) {
-    if (status === 'open') return '待开始';
-    if (status === 'in_progress') return '进行中';
-    if (status === 'blocked') return '阻塞';
-    if (status === 'done') return '已完成';
-    return status || '未知';
+/* ── Utilities ── */
+function escapeHtml(v) {
+    return String(v || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
 
-function requirementPriorityLabel(priority) {
-    if (priority === 'high') return '高优先级';
-    if (priority === 'medium') return '中优先级';
-    if (priority === 'low') return '低优先级';
-    return priority || '未设置';
+function statusLabel(s) {
+    if (s === 'recruiting') return 'Recruiting';
+    if (s === 'executing') return 'In Progress';
+    if (s === 'completed') return 'Completed';
+    return s || 'Unknown';
 }
 
-function formatTime(value) {
-    if (!value) return '-';
-    const normalized = String(value).includes('T') ? String(value) : String(value).replace(' ', 'T');
-    const parsed = new Date(normalized);
-    if (Number.isNaN(parsed.getTime())) return String(value);
-    return parsed.toLocaleString('zh-CN', {
-        month: '2-digit',
-        day: '2-digit',
-        hour: '2-digit',
-        minute: '2-digit'
-    });
+function formatTime(v) {
+    if (!v) return '-';
+    const d = new Date(String(v).includes('T') ? v : String(v).replace(' ', 'T'));
+    if (Number.isNaN(d.getTime())) return String(v);
+    return d.toLocaleString('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' });
 }
 
-function priorityScore(priority) {
-    if (priority === 'high') return 3;
-    if (priority === 'medium') return 2;
-    if (priority === 'low') return 1;
-    return 0;
+function priorityLabel(p) {
+    if (p === 'high') return 'High';
+    if (p === 'medium') return 'Medium';
+    return 'Low';
 }
 
-function splitPostContent(value) {
-    const text = String(value || '').trim();
-    if (!text) return { title: '未命名协作贴', body: '' };
-    const parts = text.split(/\n\s*\n/);
-    const title = String(parts[0] || '').trim() || '未命名协作贴';
-    const body = parts.slice(1).join('\n\n').trim();
-    return { title, body };
-}
-
-function composePostContent(title, body) {
-    const main = String(title || '').trim();
-    const detail = String(body || '').trim();
-    if (!main && !detail) return '';
-    return detail ? `${main}\n\n${detail}` : main;
-}
-
-function draftBucketKey() {
-    return String(state.activeProjectId || 'global');
-}
-
-function getDraftBucket() {
-    const key = draftBucketKey();
-    if (!state.draftsByProject[key]) {
-        state.draftsByProject[key] = {};
-    }
-    return state.draftsByProject[key];
-}
-
-function captureDrafts() {
-    const drafts = {};
-    const bucket = getDraftBucket();
-    DRAFT_FIELD_IDS.forEach((id) => {
-        const field = document.getElementById(id);
-        if (field) drafts[id] = field.value;
-    });
-    Object.assign(bucket, drafts);
-    return drafts;
-}
-
-function restoreDrafts() {
-    const bucket = getDraftBucket();
-    DRAFT_FIELD_IDS.forEach((id) => {
-        const field = document.getElementById(id);
-        if (field && Object.prototype.hasOwnProperty.call(bucket, id)) {
-            field.value = bucket[id];
-        }
-    });
-}
-
-function clearDrafts(ids) {
-    const bucket = getDraftBucket();
-    ids.forEach((id) => {
-        const field = document.getElementById(id);
-        if (field) field.value = '';
-        bucket[id] = '';
-    });
-}
-
-function syncLocation() {
-    try {
-        const params = new URLSearchParams(window.location.search);
-        if (state.activeProjectId) {
-            params.set('project', String(state.activeProjectId));
-        }
-        params.set('view', state.activeView);
-        const nextUrl = `${window.location.pathname}?${params.toString()}`;
-        window.history.replaceState({}, '', nextUrl);
-    } catch (err) {
-    }
-}
-
-function escapeHtml(value) {
-    return String(value ?? '')
-        .replace(/&/g, '&amp;')
-        .replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;')
-        .replace(/"/g, '&quot;')
-        .replace(/'/g, '&#39;');
-}
-
-function storageKey(name) {
-    return `team-center:${currentUser || 'guest'}:${name}`;
-}
-
-function normalizeView(view) {
-    return VIEW_META[view] ? view : 'overview';
-}
-
-function normalizeViewOrder(order) {
-    const source = Array.isArray(order) ? order : [];
-    const seen = new Set();
-    const nextOrder = [];
-
-    [...source, ...DEFAULT_VIEW_ORDER].forEach((view) => {
-        if (!VIEW_META[view] || seen.has(view)) return;
-        seen.add(view);
-        nextOrder.push(view);
-    });
-
-    return nextOrder;
-}
-
-function loadViewOrder() {
-    try {
-        const raw = localStorage.getItem(storageKey('view-order'));
-        if (!raw) return [...DEFAULT_VIEW_ORDER];
-        return normalizeViewOrder(JSON.parse(raw));
-    } catch (err) {
-        return [...DEFAULT_VIEW_ORDER];
-    }
-}
-
-function saveViewOrder() {
-    try {
-        localStorage.setItem(storageKey('view-order'), JSON.stringify(state.viewOrder));
-    } catch (err) {
-    }
-}
-
-function loadActiveView() {
-    const stored = localStorage.getItem(storageKey('active-view'));
-    return normalizeView(stored || urlParams.get('view') || 'overview');
-}
-
-function saveActiveView(view) {
-    try {
-        localStorage.setItem(storageKey('active-view'), view);
-    } catch (err) {
-    }
-}
-
-function goBackDashboard() {
-    window.location.href = 'dashboard.html';
-}
-
-async function initializeProjectCenter() {
+/* ── Init ── */
+window.onload = function () {
     if (!currentUser) {
-        alert('请先登录');
+        alert('Please login first');
         window.location.href = 'index.html';
         return;
     }
+    loadProjects().then(() => {
+        if (preferredProjectId) { selectProject(preferredProjectId, true); return; }
+        loadPinnedProject();
+    });
+    document.addEventListener('click', (e) => {
+        const sw = document.getElementById('project-switcher-dropdown');
+        const tr = document.getElementById('project-switcher-trigger');
+        if (sw && sw.classList.contains('open') && !sw.contains(e.target) && e.target !== tr && !tr.contains(e.target)) {
+            closeSwitcher();
+        }
+    });
+};
 
-    state.viewOrder = normalizeViewOrder(loadViewOrder());
-    state.activeView = loadActiveView();
-    renderViewNav();
-    updateWorkspaceHeader();
-    await loadProjects();
-}
-
-function updateWorkspaceHeader() {
-    const titleEl = document.getElementById('team-workspace-title');
-    const subtitleEl = document.getElementById('team-workspace-subtitle');
-    const detail = state.activeProjectDetail;
-
-    if (!titleEl || !subtitleEl) return;
-
-    if (!detail) {
-        titleEl.textContent = '请选择一个项目';
-        subtitleEl.textContent = '左侧先选中一个项目，再切换下方视图。';
-        return;
-    }
-
-    const project = detail.project;
-    const members = detail.members || [];
-    const requirements = detail.requirements || [];
-    const feedback = detail.feedback || [];
-
-    titleEl.textContent = project.title || '未命名项目';
-    subtitleEl.textContent = `${statusLabel(project.status)} · ${members.length} 名成员 · ${requirements.length} 个需求 · ${feedback.filter((item) => item.status === 'open').length} 条待处理协作贴`;
-}
-
+/* ── Project Switcher ── */
 async function loadProjects() {
-    const panel = document.getElementById('team-main-panel');
     try {
         const resp = await fetch(`http://localhost:3000/api/my-projects?user=${encodeURIComponent(currentUser)}`);
         const json = await resp.json();
-        if (!json.success) {
-            if (panel) panel.innerHTML = `<p class="team-empty">${escapeHtml(json.message || '获取项目失败')}</p>`;
-            return;
+        if (json.success) {
+            state.projects = json.data || [];
         }
-
-        state.projects = json.data || [];
-        renderProjectList();
-
-        if (!state.projects.length) {
-            state.activeProjectId = null;
-            state.activeProjectDetail = null;
-            updateWorkspaceHeader();
-            renderViewNav();
-            if (panel) {
-                panel.innerHTML = `
-                    <div class="team-card">
-                        <h3>还没有项目</h3>
-                        <p class="team-empty">你还没有加入开启项目管理的项目。先回大厅发布一个需求，并勾选开启项目管理。</p>
-                    </div>
-                `;
-            }
-            syncLocation();
-            return;
-        }
-
-        const preferred = state.projects.find((project) => project.id === preferredProjectId);
-        const stored = state.projects.find((project) => project.id === state.activeProjectId);
-        const initial = preferred || stored || state.projects[0];
-        state.activeProjectId = initial.id;
-        await loadProjectDetail(state.activeProjectId);
-    } catch (err) {
-        if (panel) panel.innerHTML = '<p class="team-empty">加载失败，请检查后端服务。</p>';
-    }
+        renderSwitcherList();
+    } catch (_) {}
 }
 
-function renderProjectList() {
-    const box = document.getElementById('team-project-list');
-    if (!box) return;
-
-    if (!state.projects.length) {
-        box.innerHTML = '<p class="team-empty">暂无项目</p>';
+function renderSwitcherList(filter) {
+    const list = document.getElementById('switcher-project-list');
+    if (!list) return;
+    let items = state.projects;
+    if (filter) {
+        const q = filter.toLowerCase();
+        items = items.filter((p) => (p.title || '').toLowerCase().includes(q));
+    }
+    if (!items.length) {
+        list.innerHTML = '<div style="padding:16px;text-align:center;color:var(--outline);font-size:13px;">No projects found</div>';
         return;
     }
-
-    box.innerHTML = state.projects.map((project) => `
-        <button class="team-project-item ${project.id === state.activeProjectId ? 'active' : ''}" onclick="switchProject(${project.id})">
-            <strong>${escapeHtml(project.title || '未命名项目')}</strong>
-            <span>${statusLabel(project.status)} · ${project.member_count || 0} 人</span>
-            <span>${escapeHtml(project.post_title || project.title || '')}</span>
-        </button>
-    `).join('');
-}
-
-function renderViewNav() {
-    const box = document.getElementById('team-view-nav');
-    if (!box) return;
-
-    if (!state.activeProjectDetail) {
-        box.innerHTML = '';
-        return;
-    }
-
-    box.innerHTML = state.viewOrder.map((view) => {
-        const meta = VIEW_META[view];
+    list.innerHTML = items.map((p) => {
+        const active = p.id === state.activeProjectId ? ' active' : '';
+        const memberCount = p.member_count || 0;
+        const msTotal = p.milestone_count || 0;
+        const msDone = p.completed_milestone_count || 0;
         return `
-            <div
-                class="team-view-item ${view === state.activeView ? 'active' : ''}"
-            >
-                <button type="button" class="team-view-main" onclick="switchView('${view}')">
-                    <strong>${meta.label}</strong>
-                </button>
+            <div class="project-switcher-item${active}" onclick="selectProject(${p.id})">
+                <div class="project-switcher-item-info">
+                    <div class="project-switcher-item-name">${escapeHtml(p.title || 'Untitled')}</div>
+                    <div class="project-switcher-item-meta">
+                        <span>${memberCount} members</span>
+                        <span>${msDone}/${msTotal} milestones</span>
+                    </div>
+                </div>
+                <div class="project-switcher-item-status">
+                    <span class="cm-chip" style="font-size:10px;">${statusLabel(p.status)}</span>
+                </div>
             </div>
         `;
     }).join('');
 }
 
-function beginViewDrag(view, event) {
-    draggedViewKey = view;
-    if (event?.dataTransfer) {
-        event.dataTransfer.effectAllowed = 'move';
-        event.dataTransfer.setData('text/plain', view);
-    }
+function toggleProjectSwitcher() {
+    const dd = document.getElementById('project-switcher-dropdown');
+    const tr = document.getElementById('project-switcher-trigger');
+    if (!dd || !tr) return;
+    const open = dd.classList.contains('open');
+    if (open) { closeSwitcher(); return; }
+    dd.classList.add('open');
+    tr.classList.add('open');
+    document.getElementById('switcher-search').value = '';
+    renderSwitcherList();
+    setTimeout(() => document.getElementById('switcher-search').focus(), 100);
 }
 
-function allowViewDrop(event) {
-    event.preventDefault();
-    if (event?.dataTransfer) {
-        event.dataTransfer.dropEffect = 'move';
-    }
+function closeSwitcher() {
+    const dd = document.getElementById('project-switcher-dropdown');
+    const tr = document.getElementById('project-switcher-trigger');
+    if (dd) dd.classList.remove('open');
+    if (tr) tr.classList.remove('open');
 }
 
-function dropView(targetView, event) {
-    event.preventDefault();
-    const sourceView = draggedViewKey || event?.dataTransfer?.getData('text/plain') || '';
-    draggedViewKey = '';
-
-    if (!sourceView || sourceView === targetView) return;
-
-    const sourceIndex = state.viewOrder.indexOf(sourceView);
-    const targetIndex = state.viewOrder.indexOf(targetView);
-    if (sourceIndex < 0 || targetIndex < 0) return;
-
-    const nextOrder = [...state.viewOrder];
-    nextOrder.splice(sourceIndex, 1);
-    nextOrder.splice(targetIndex, 0, sourceView);
-    state.viewOrder = normalizeViewOrder(nextOrder);
-    saveViewOrder();
-    renderViewNav();
+function filterSwitcherProjects() {
+    const q = document.getElementById('switcher-search')?.value || '';
+    renderSwitcherList(q);
 }
 
-function endViewDrag() {
-    draggedViewKey = '';
-}
-
-async function switchProject(projectId) {
-    captureDrafts();
+function selectProject(projectId, silent) {
+    closeSwitcher();
+    if (state.activeProjectId === projectId && !silent) return;
     state.activeProjectId = projectId;
-    renderProjectList();
-    await loadProjectDetail(projectId, { captureDraftsBeforeRefresh: false });
+    state.activeView = 'overview';
+    document.getElementById('project-placeholder').style.display = 'none';
+    document.getElementById('project-view-container').style.display = '';
+    document.getElementById('project-tabs').style.display = 'flex';
+    document.getElementById('btn-invite-member').style.display = '';
+    document.getElementById('btn-pin-project').style.display = '';
+    document.getElementById('btn-project-chat').style.display = '';
+    updatePinIcon();
+    document.getElementById('current-project-name').textContent =
+        (state.projects.find((p) => p.id === projectId) || {}).title || 'Untitled';
+    loadProjectDetail(projectId);
 }
 
-function switchView(view) {
-    state.activeView = normalizeView(view);
-    saveActiveView(state.activeView);
-    renderViewNav();
-    renderCurrentView();
-    syncLocation();
+/* ── Pin to Top ── */
+function getPinnedProjectId() {
+    try {
+        const v = localStorage.getItem('cm_pinned_project');
+        return v ? Number(v) : null;
+    } catch (_) { return null; }
 }
 
-function resetViewOrder() {
-    state.viewOrder = [...DEFAULT_VIEW_ORDER];
-    saveViewOrder();
-    renderViewNav();
+function setPinnedProjectId(id) {
+    try {
+        if (id) localStorage.setItem('cm_pinned_project', String(id));
+        else localStorage.removeItem('cm_pinned_project');
+    } catch (_) {}
 }
 
-async function loadProjectDetail(projectId, options = {}) {
-    const panel = document.getElementById('team-main-panel');
-    if (options.captureDraftsBeforeRefresh !== false) {
-        captureDrafts();
+function togglePinProject() {
+    if (!state.activeProjectId) return;
+    const pinned = getPinnedProjectId();
+    if (pinned === state.activeProjectId) {
+        setPinnedProjectId(null);
+    } else {
+        setPinnedProjectId(state.activeProjectId);
     }
-    if (panel) panel.innerHTML = '<p class="team-empty">正在加载项目详情...</p>';
+    updatePinIcon();
+}
 
+function updatePinIcon() {
+    const icon = document.getElementById('pin-icon');
+    const btn = document.getElementById('btn-pin-project');
+    if (!icon || !btn) return;
+    const pinned = getPinnedProjectId();
+    if (pinned === state.activeProjectId) {
+        icon.style.fontVariationSettings = "'FILL' 1";
+        icon.textContent = 'push_pin';
+        btn.childNodes[btn.childNodes.length - 1].textContent = ' Pinned';
+    } else {
+        icon.style.fontVariationSettings = "'FILL' 0";
+        icon.textContent = 'push_pin';
+        btn.childNodes[btn.childNodes.length - 1].textContent = ' Pin';
+    }
+}
+
+function openProjectChat() {
+    if (state.activeProjectId) {
+        window.location.href = 'messages.html?project=' + state.activeProjectId;
+    }
+}
+
+function loadPinnedProject() {
+    const pinnedId = getPinnedProjectId();
+    if (pinnedId && state.projects.some((p) => p.id === pinnedId)) {
+        selectProject(pinnedId, true);
+    }
+}
+
+/* ── Load Project Detail ── */
+async function loadProjectDetail(projectId) {
+    const container = document.getElementById('project-view-container');
+    container.innerHTML = '<p class="team-empty">Loading...</p>';
     try {
         const [detailResp, feedbackResp] = await Promise.all([
             fetch(`http://localhost:3000/api/projects/${projectId}/detail?user=${encodeURIComponent(currentUser)}`),
             fetch(`http://localhost:3000/api/projects/${projectId}/feedback?user=${encodeURIComponent(currentUser)}`)
         ]);
-
         const detailJson = await detailResp.json();
         const feedbackJson = await feedbackResp.json();
-
         if (!detailJson.success) {
-            if (panel) panel.innerHTML = `<p class="team-empty">${escapeHtml(detailJson.message || '加载失败')}</p>`;
+            container.innerHTML = `<p class="team-empty">${escapeHtml(detailJson.message || 'Load failed')}</p>`;
             return;
         }
-
         state.activeProjectDetail = {
             ...detailJson.data,
             feedback: feedbackJson.success ? (feedbackJson.data || []) : [],
             feedbackCanManage: feedbackJson.success ? !!feedbackJson.can_manage : false
         };
-
-        updateWorkspaceHeader();
-        renderViewNav();
         renderCurrentView();
-        restoreDrafts();
-        syncLocation();
+        initAvatars();
+        if (state.activeView === 'members') loadExitRequests();
     } catch (err) {
-        if (panel) panel.innerHTML = '<p class="team-empty">网络错误，加载失败。</p>';
+        console.error('[loadProjectDetail]', err);
+        container.innerHTML = '<p class="team-empty">Network error: ' + (err.message || 'unknown') + '</p>';
     }
 }
 
+function initAvatars() {
+    var els = document.querySelectorAll('.cm-avatar-sm[data-user]');
+    for (var i = 0; i < els.length; i++) {
+        var el = els[i];
+        var user = el.getAttribute('data-user');
+        if (!user) continue;
+        var img = document.createElement('img');
+        img.src = 'http://localhost:3000/api/users/avatar/' + user + '/raw';
+        img.onerror = function() { this.remove(); };
+        el.insertBefore(img, el.firstChild);
+    }
+}
+
+/* ── View Switching ── */
+function switchView(view) {
+    state.activeView = view;
+    document.querySelectorAll('.project-tab').forEach((t) => {
+        t.classList.toggle('active', t.dataset.view === view);
+    });
+    renderCurrentView();
+    initAvatars();
+    if (view === 'members') loadExitRequests();
+}
+
 function getDetailParts() {
-    const detail = state.activeProjectDetail || {};
+    const d = state.activeProjectDetail || {};
     return {
-        project: detail.project || {},
-        members: detail.members || [],
-        milestones: detail.milestones || [],
-        checkins: detail.checkins || [],
-        requirements: detail.requirements || [],
-        scoreboard: detail.scoreboard || [],
-        feedback: detail.feedback || [],
-        canManage: !!detail.can_manage,
-        feedbackCanManage: !!detail.feedbackCanManage
+        project: d.project || {},
+        members: d.members || [],
+        milestones: d.milestones || [],
+        checkins: d.checkins || [],
+        requirements: d.requirements || [],
+        scoreboard: d.scoreboard || [],
+        feedback: d.feedback || [],
+        canManage: !!d.can_manage,
+        feedbackCanManage: !!d.feedbackCanManage
     };
 }
 
 function renderCurrentView() {
-    const panel = document.getElementById('team-main-panel');
-    if (!panel) return;
-    captureDrafts();
-
-    if (!state.activeProjectDetail) {
-        panel.innerHTML = '<p class="team-empty">请选择一个项目。</p>';
-        return;
-    }
-
+    const container = document.getElementById('project-view-container');
+    if (!container || !state.activeProjectDetail) return;
     const detail = getDetailParts();
-
-    if (state.activeView === 'issues') {
-        panel.innerHTML = renderIssuesView(detail);
-        restoreDrafts();
-        return;
-    }
-    if (state.activeView === 'members') {
-        panel.innerHTML = renderMembersView(detail);
-        restoreDrafts();
-        return;
-    }
-    if (state.activeView === 'activity') {
-        panel.innerHTML = renderActivityView(detail);
-        restoreDrafts();
-        return;
-    }
-    if (state.activeView === 'checkins') {
-        panel.innerHTML = renderCheckinsView(detail);
-        restoreDrafts();
-        return;
-    }
-
-    panel.innerHTML = renderOverviewView(detail);
-    restoreDrafts();
+    const views = {
+        overview: renderOverview,
+        issues: renderIssues,
+        members: renderMembers,
+        activity: renderActivity,
+        checkins: renderCheckins
+    };
+    const fn = views[state.activeView];
+    container.innerHTML = fn ? fn(detail) : '<p class="team-empty">View not available</p>';
+    if (state.activeView === 'issues') restoreDrafts();
+    if (state.activeView === 'activity') { restoreDrafts(); initCollabLabelPicker(); }
 }
 
-function renderOverviewView(detail) {
-    const project = detail.project;
-    const members = detail.members;
-    const requirements = detail.requirements;
-    const feedback = detail.feedback;
-    const scoreboard = detail.scoreboard;
-    const canManage = detail.canManage;
-    const openIssues = requirements.filter((item) => item.status !== 'done').length;
-    const openPosts = feedback.filter((item) => item.status === 'open').length;
-    const resolvedPosts = feedback.filter((item) => item.status === 'resolved').length;
-    const latestIssue = requirements[0];
-    const latestPost = feedback[0];
+/* ── Collab Label Picker (matches dashboard's labelChipHtml exactly) ── */
+const COLLAB_LABELS = ['寻人组队', '提供技能', '自定义'];
 
-    return `
-        <section class="team-card team-hero-card">
-            <div class="team-card-head">
-                <div>
-                    <p class="team-eyebrow">概览</p>
-                    <h2>${escapeHtml(project.title || '未命名项目')}</h2>
-                </div>
-                <span class="team-status-chip">${statusLabel(project.status)}</span>
-            </div>
-            <div class="team-actions-row">
-                ${canManage ? `
-                    <button onclick="changeProjectStatus('recruiting')">设为招募</button>
-                    <button onclick="changeProjectStatus('executing')">进入执行</button>
-                    <button onclick="changeProjectStatus('completed')">结项</button>
-                ` : '<span class="muted">仅队长可切换状态</span>'}
-                <button onclick="switchView('issues')">发需求</button>
-                <button onclick="switchView('activity')">看协作贴</button>
-                <button onclick="switchView('members')">调成员</button>
-            </div>
-            <div class="team-summary-grid">
-                <article class="team-summary-card">
-                    <span>成员</span>
-                    <strong>${members.length}</strong>
-                </article>
-                <article class="team-summary-card">
-                    <span>开放需求</span>
-                    <strong>${openIssues}</strong>
-                </article>
-                <article class="team-summary-card">
-                    <span>待处理协作贴</span>
-                    <strong>${openPosts}</strong>
-                </article>
-                <article class="team-summary-card">
-                    <span>已关闭协作贴</span>
-                    <strong>${resolvedPosts}</strong>
-                </article>
-            </div>
-            <div class="team-overview-pair">
-                <div class="team-overview-box">
-                    <div class="team-overview-box-head">
-                        <h3>最近需求</h3>
-                        <button type="button" class="team-panel-ghost" onclick="switchView('issues')">打开需求页</button>
-                    </div>
-                    ${latestIssue ? `
-                        <div class="issue-card issue-card-compact">
-                            <div class="issue-card-head">
-                                <div>
-                                    <strong>${escapeHtml(latestIssue.title)}</strong>
-                                    <p>${requirementStatusLabel(latestIssue.status)} · ${requirementPriorityLabel(latestIssue.priority)} · ${escapeHtml(latestIssue.assignee || '未分配')}</p>
-                                </div>
-                                <span class="issue-chip issue-chip-soft">需求</span>
-                            </div>
-                            <p>${escapeHtml(latestIssue.description || '暂无说明')}</p>
-                        </div>
-                    ` : '<p class="team-empty">暂无需求记录</p>'}
-                </div>
-                <div class="team-overview-box">
-                    <div class="team-overview-box-head">
-                        <h3>最近协作贴</h3>
-                        <button type="button" class="team-panel-ghost" onclick="switchView('activity')">打开协作页</button>
-                    </div>
-                    ${latestPost ? `
-                        <div class="issue-card issue-card-compact">
-                            <div class="issue-card-head">
-                                <div>
-                                    <strong>${escapeHtml(splitPostContent(latestPost.content).title)}</strong>
-                                    <p>${latestPost.status === 'resolved' ? '已关闭' : '进行中'} · ${escapeHtml(latestPost.category || 'discussion')} · ${escapeHtml(latestPost.target_user || '全员可看')}</p>
-                                </div>
-                                <span class="issue-chip issue-chip-soft">协作贴</span>
-                            </div>
-                            <p>${escapeHtml(splitPostContent(latestPost.content).body || '暂无补充说明')}</p>
-                        </div>
-                    ` : '<p class="team-empty">暂无协作贴</p>'}
-                </div>
-            </div>
-            <section class="team-card" style="margin:12px 0 0 0;">
-                <div class="team-card-head">
-                    <div>
-                        <h3>最近协作贴</h3>
-                    </div>
-                    <button type="button" class="team-panel-ghost" onclick="switchView('activity')">查看完整活动页</button>
-                </div>
-                <div class="issue-list">
-                    ${feedback.slice(0, 4).map((item) => renderFeedbackItem(item, detail.feedbackCanManage)).join('') || '<p class="team-empty">暂无协作贴</p>'}
-                </div>
-            </section>
-        </section>
-
-        ${project.status === 'completed' ? renderRatingBoard(project, members, scoreboard) : ''}
-    `;
+function collabLabelChipHtml(label, selected) {
+    const bg = selected ? 'var(--primary-container)' : '#f8fafc';
+    const color = selected ? 'var(--primary)' : '#334155';
+    const border = selected ? 'var(--primary-container-strong)' : '#cbd5e1';
+    return `<button type="button" onclick="selectCollabLabel('${label}')" style="height:28px;line-height:normal;width:auto;padding:0 12px;border-radius:999px;border:1px solid ${border};background:${bg};color:${color};font-size:12px;font-family:inherit;cursor:pointer;box-sizing:border-box;margin:0;outline:none;text-align:center;vertical-align:middle;"># ${label}</button>`;
 }
 
-function renderIssuesView(detail) {
-    const project = detail.project;
-    const members = detail.members;
-    const requirements = detail.requirements;
-    const canManage = detail.canManage;
-    const filtered = filterIssues(requirements);
-    const issueCount = requirements.length;
-    const openCount = requirements.filter((item) => item.status !== 'done').length;
-    const revieweeOptions = members
-        .filter((member) => member.user_name !== currentUser)
-        .map((member) => `<option value="${escapeHtml(member.user_name)}">${escapeHtml(member.user_name)}</option>`)
-        .join('');
-
-    return `
-        <section class="team-card">
-            <div class="team-card-head">
-                <div>
-                    <p class="team-eyebrow">帖子 / 协作</p>
-                    <h2>${escapeHtml(project.title || '未命名项目')}</h2>
-                </div>
-                <div class="team-issue-stats">
-                    <span class="issue-chip">总计 ${issueCount}</span>
-                    <span class="issue-chip issue-chip-soft">未完成 ${openCount}</span>
-                </div>
-            </div>
-            <div class="issue-compose-grid">
-                <div class="issue-compose-main">
-                    <input id="new-req-title" type="text" placeholder="帖子标题">
-                    <textarea id="new-req-desc" rows="8" placeholder="补充背景、目标和你想要的结果"></textarea>
-                </div>
-                <aside class="issue-compose-meta">
-                    <label for="new-req-priority">优先级</label>
-                    <select id="new-req-priority">
-                        <option value="high">高优先级</option>
-                        <option value="medium" selected>中优先级</option>
-                        <option value="low">低优先级</option>
-                    </select>
-                    <label for="new-req-assignee">指派成员</label>
-                    <select id="new-req-assignee">
-                        <option value="">暂不分配</option>
-                        ${members.map((member) => `<option value="${escapeHtml(member.user_name)}">${escapeHtml(member.user_name)}</option>`).join('')}
-                    </select>
-                    <div class="issue-compose-note">发布后会直接进帖子列表，和大厅的帖子流保持一致。</div>
-                    <button class="issue-submit-btn" onclick="createRequirement()">发布帖子</button>
-                </aside>
-            </div>
-        </section>
-
-        <section class="team-card">
-            <div class="team-card-head">
-                <div>
-                    <h3>帖子列表</h3>
-                </div>
-                <div class="team-inline-filters">
-                    <select id="issue-status-filter" onchange="setIssueStatusFilter(this.value)">
-                        <option value="all" ${state.filters.issueStatus === 'all' ? 'selected' : ''}>全部状态</option>
-                        <option value="open" ${state.filters.issueStatus === 'open' ? 'selected' : ''}>待开始</option>
-                        <option value="in_progress" ${state.filters.issueStatus === 'in_progress' ? 'selected' : ''}>进行中</option>
-                        <option value="blocked" ${state.filters.issueStatus === 'blocked' ? 'selected' : ''}>阻塞</option>
-                        <option value="done" ${state.filters.issueStatus === 'done' ? 'selected' : ''}>已完成</option>
-                    </select>
-                    <select id="issue-sort" onchange="setIssueSort(this.value)">
-                        <option value="recent" ${state.filters.issueSort === 'recent' ? 'selected' : ''}>最近更新</option>
-                        <option value="priority" ${state.filters.issueSort === 'priority' ? 'selected' : ''}>优先级优先</option>
-                    </select>
-                </div>
-            </div>
-            <div class="issue-list">
-                ${filtered.map((item) => renderIssueCard(item, members, canManage, revieweeOptions)).join('') || '<p class="team-empty">暂无需求记录</p>'}
-            </div>
-        </section>
-    `;
-}
-
-function filterIssues(requirements) {
-    let list = [...requirements];
-    if (state.filters.issueStatus !== 'all') {
-        list = list.filter((item) => item.status === state.filters.issueStatus);
+function initCollabLabelPicker() {
+    const picker = document.getElementById('collab-label-picker');
+    if (!picker) return;
+    if (!state._collabLabel) state._collabLabel = '寻人组队';
+    const currentCustom = document.getElementById('collab-custom-label')?.value || '';
+    let chips = COLLAB_LABELS.map((label) => collabLabelChipHtml(label, state._collabLabel === label)).join('');
+    if (state._collabLabel === '自定义') {
+        chips += `
+            <input type="text" id="collab-custom-label" maxlength="12" placeholder="在此输入"
+                style="height:28px;line-height:normal;width:80px;min-width:80px;max-width:320px;padding:0 12px;border-radius:999px;border:1px solid var(--primary-container-strong);background:var(--primary-container);color:var(--primary);font-size:12px;font-family:inherit;box-sizing:border-box;margin:0;outline:none;text-align:center;vertical-align:middle;">`;
     }
+    picker.innerHTML = chips;
+    if (state._collabLabel === '自定义') {
+        const input = document.getElementById('collab-custom-label');
+        if (input && currentCustom) input.value = currentCustom;
+    }
+}
 
-    list.sort((left, right) => {
-        if (state.filters.issueSort === 'priority') {
-            const scoreDiff = priorityScore(right.priority) - priorityScore(left.priority);
-            if (scoreDiff !== 0) return scoreDiff;
-        }
+function selectCollabLabel(label) {
+    if (state._collabLabel === label) { state._collabLabel = null; }
+    else { state._collabLabel = label; }
+    initCollabLabelPicker();
+}
 
-        const leftTime = new Date(String(left.updated_at || left.created_at || '').replace(' ', 'T')).getTime() || 0;
-        const rightTime = new Date(String(right.updated_at || right.created_at || '').replace(' ', 'T')).getTime() || 0;
-        return rightTime - leftTime || Number(right.id || 0) - Number(left.id || 0);
+/* ── Drafts ── */
+function captureDrafts() {
+    const fields = ['new-req-title', 'new-req-desc', 'new-req-priority', 'new-req-assignee',
+        'collab-title', 'collab-body', 'collab-target', 'checkin-note', 'checkin-completion',
+        'new-member-name', 'new-member-role', 'rating-reviewee', 'rating-comment'];
+    fields.forEach((id) => {
+        const el = document.getElementById(id);
+        if (el) state.drafts[id] = el.value || '';
     });
-
-    return list;
 }
 
-function renderIssueCard(item, members, canManage, revieweeOptions) {
-    const canUpdateStatus = canManage || item.assignee === currentUser || item.created_by === currentUser;
-    const canEditMeta = canManage;
+function restoreDrafts() {
+    Object.keys(state.drafts).forEach((id) => {
+        const el = document.getElementById(id);
+        if (el && state.drafts[id]) el.value = state.drafts[id];
+    });
+}
+
+/* ── Overview View ── */
+function buildTimeline(milestones) {
+    if (!milestones || !milestones.length) {
+        return '<div class="cm-glass-card" style="text-align:center;padding:32px;color:var(--outline);">No milestones yet</div>';
+    }
+    const total = milestones.length;
+    const completed = milestones.filter((m) => m.status === 'completed').length;
+    const progressPct = total > 0 ? Math.round((completed / total) * 100) : 0;
+    const currentIdx = milestones.findIndex((m) => m.status !== 'completed');
+    const activeIdx = currentIdx >= 0 ? currentIdx : total - 1;
+
+    const nodes = milestones.map((m, i) => {
+        let cls = 'future';
+        if (m.status === 'completed') cls = 'completed';
+        else if (i === activeIdx) cls = 'current';
+        const leftPct = total > 1 ? (i / (total - 1)) * 100 : 50;
+        const checkIcon = m.status === 'completed'
+            ? '<span class="material-symbols-outlined" style="font-size:11px;">check</span>' : '';
+        const hoverTitle = escapeHtml(m.title) + (m.due_date ? ' · Due ' + escapeHtml(m.due_date) : '');
+        const currentCard = cls === 'current'
+            ? `<div class="project-timeline-current-card" style="left:${leftPct}%;transform:translateX(-50%);">Current: ${escapeHtml(m.title)}</div>` : '';
+        return `${currentCard}<div class="project-timeline-node ${cls}" style="left:${leftPct}%;" title="${hoverTitle}">
+            <div class="project-timeline-node-dot">${checkIcon}</div>
+            <div class="project-timeline-node-label">${escapeHtml(m.title)}</div>
+        </div>`;
+    }).join('');
+
     return `
-        <article class="issue-card">
-            <div class="issue-card-head">
-                <div>
-                    <strong>${escapeHtml(item.title)}</strong>
-                    <div class="issue-card-meta">
-                        <span class="issue-chip">${requirementStatusLabel(item.status)}</span>
-                        <span class="issue-chip issue-chip-soft">${requirementPriorityLabel(item.priority)}</span>
-                        <span class="issue-chip issue-chip-soft">${escapeHtml(item.assignee || '未分配')}</span>
-                    </div>
+        <div class="cm-glass-card" style="padding:20px 24px;">
+            <h3 style="margin:0 0 4px;font-size:17px;font-weight:800;">Project Timeline</h3>
+            <div class="project-timeline">
+                <div class="project-timeline-track">
+                    <div class="project-timeline-progress" style="width:${progressPct}%;"></div>
                 </div>
-                <div class="issue-card-side-meta">
-                    <span>由 ${escapeHtml(item.created_by || '系统')} 发布</span>
-                    <span>${formatTime(item.updated_at || item.created_at)}</span>
-                </div>
+                ${nodes}
             </div>
-            <p class="issue-card-desc">${escapeHtml(item.description || '暂无说明')}</p>
-            <div class="issue-card-actions">
-                <select id="req-status-${item.id}" ${canUpdateStatus ? '' : 'disabled'}>
-                    <option value="open" ${item.status === 'open' ? 'selected' : ''}>待开始</option>
-                    <option value="in_progress" ${item.status === 'in_progress' ? 'selected' : ''}>进行中</option>
-                    <option value="blocked" ${item.status === 'blocked' ? 'selected' : ''}>阻塞</option>
-                    <option value="done" ${item.status === 'done' ? 'selected' : ''}>已完成</option>
-                </select>
-                <button onclick="updateRequirementStatus(${item.id})" ${canUpdateStatus ? '' : 'disabled'}>更新状态</button>
-                ${canEditMeta ? `
-                    <select id="req-assignee-${item.id}">
-                        <option value="">未分配</option>
-                        ${members.map((member) => `<option value="${escapeHtml(member.user_name)}" ${member.user_name === item.assignee ? 'selected' : ''}>${escapeHtml(member.user_name)}</option>`).join('')}
-                    </select>
-                    <button onclick="reassignRequirement(${item.id})">改派</button>
-                ` : ''}
-            </div>
-        </article>
+        </div>
     `;
 }
 
-function setIssueStatusFilter(value) {
-    state.filters.issueStatus = value || 'all';
-    renderCurrentView();
-}
-
-function setIssueSort(value) {
-    state.filters.issueSort = value || 'recent';
-    renderCurrentView();
-}
-
-function renderMembersView(detail) {
-    const project = detail.project;
-    const members = detail.members;
-    const canManage = detail.canManage;
-
+function buildHeatmapPlaceholder() {
+    const now = new Date();
+    const monthLabel = now.toLocaleString('en', { month: 'long', year: 'numeric' });
+    const dayLabels = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
     return `
-        <section class="team-card">
-            <div class="team-card-head">
-                <div>
-                    <p class="team-eyebrow">成员管理</p>
-                    <h2>${escapeHtml(project.title || '未命名项目')}</h2>
+        <div class="cm-glass-card" style="width:fit-content;min-width:0;">
+            <h3 style="margin:0 0 4px;font-size:17px;font-weight:800;">Activity Heatmap</h3>
+            <p style="margin:0 0 12px;font-size:12px;color:var(--outline);">${monthLabel} · Project total contributions</p>
+            <div class="heatmap-container">
+                <div class="heatmap-day-labels">${dayLabels.map((d) => `<span>${d}</span>`).join('')}</div>
+                <div class="heatmap-grid" id="heatmap-grid"></div>
+                <div class="heatmap-legend">
+                    <span>Less</span>
+                    <div class="heatmap-cell"></div>
+                    <div class="heatmap-cell level-1"></div>
+                    <div class="heatmap-cell level-2"></div>
+                    <div class="heatmap-cell level-3"></div>
+                    <div class="heatmap-cell level-4"></div>
+                    <div class="heatmap-cell level-5"></div>
+                    <span>More</span>
                 </div>
-                <button type="button" class="team-panel-ghost" onclick="switchView('activity')">去活动页</button>
             </div>
-            <div class="member-list">
-                ${members.length ? members.map((member) => renderMemberItem(member, canManage)).join('') : '<p class="team-empty">暂无成员</p>'}
-            </div>
+        </div>
+    `;
+}
+
+function renderMilestoneManager(detail) {
+    const { milestones, canManage } = detail;
+    return `
+        <div class="cm-glass-card" style="margin-top:14px;">
+            <h3 style="margin:0 0 14px;font-size:17px;font-weight:800;">Milestones (${milestones.length})</h3>
             ${canManage ? `
-                <div class="member-compose">
-                    <input id="new-member-name" type="text" placeholder="成员用户名">
-                    <select id="new-member-role">
-                        <option value="member">普通成员</option>
-                        <option value="core_member">核心成员</option>
-                        <option value="leader">负责人</option>
-                    </select>
-                    <button onclick="addProjectMember()">新增成员</button>
-                </div>
-            ` : '<p class="team-empty">仅负责人可新增成员和调整角色。</p>'}
-        </section>
+            <div style="display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap;align-items:center;">
+                <input id="new-ms-title" type="text" placeholder="Milestone title" style="flex:1;min-width:160px;min-height:40px;">
+                <input id="new-ms-date" type="date" style="max-width:150px;min-height:40px;">
+                <button onclick="createMilestone()" class="cm-button" style="min-height:40px;white-space:nowrap;">
+                    <span class="material-symbols-outlined">add</span> Add
+                </button>
+            </div>` : ''}
+            <div id="milestone-list">
+                ${milestones.map((m) => {
+                    const done = m.status === 'completed';
+                    return `
+                        <div class="sprint-task${done ? ' done' : ''}" style="align-items:center;">
+                            <div class="sprint-task-icon" style="cursor:${canManage ? 'pointer' : 'default'};" onclick="${canManage ? `toggleMilestone(${m.id},'${done ? 'pending' : 'completed'}')` : ''}">
+                                ${done ? '<span class="material-symbols-outlined" style="font-size:12px;">check</span>' : ''}
+                            </div>
+                            <div class="sprint-task-info">
+                                <div class="sprint-task-title">${escapeHtml(m.title)}</div>
+                                <div class="sprint-task-meta">
+                                    ${m.due_date ? `<span>Due ${escapeHtml(m.due_date)}</span>` : '<span>No due date</span>'}
+                                    <span>${done ? 'Completed ' + formatTime(m.completed_at) : 'Pending'}</span>
+                                </div>
+                            </div>
+                            ${canManage ? `
+                            <button class="cm-button ghost" style="font-size:11px;min-height:26px;padding:2px 8px;flex-shrink:0;" onclick="deleteMilestone(${m.id})" title="Delete">
+                                <span class="material-symbols-outlined" style="font-size:16px;">close</span>
+                            </button>` : ''}
+                        </div>
+                    `;
+                }).join('') || '<p style="font-size:13px;color:var(--outline);padding:12px 0;">No milestones yet. Add one to start tracking progress.</p>'}
+            </div>
+        </div>
     `;
 }
 
-function renderMemberItem(member, canManage) {
-    const canSelfLeave = member.user_name === currentUser && member.role !== 'leader';
+function buildHeatmapJS() {
+    if (!state.activeProjectId) return '';
+    setTimeout(async () => {
+        const grid = document.getElementById('heatmap-grid');
+        if (!grid) return;
+        try {
+            const resp = await fetch(`http://localhost:3000/api/projects/${state.activeProjectId}/heatmap?user=${encodeURIComponent(currentUser)}`);
+            const json = await resp.json();
+            if (!json.success || !json.data) { grid.innerHTML = '<div style="padding:12px;color:var(--outline);font-size:12px;">No data</div>'; return; }
+            const { grid: weeks } = json.data;
+            if (!weeks || !weeks.length) { grid.innerHTML = '<div style="padding:12px;color:var(--outline);font-size:12px;">No contributions this month</div>'; return; }
+
+            grid.innerHTML = weeks.map((week) => {
+                const cells = week.map((day) => {
+                    if (!day) return '<div class="heatmap-cell" style="visibility:hidden;"></div>';
+                    const t = day.total || 0;
+                    const level = t >= 5 ? 5 : (t >= 4 ? 4 : (t >= 3 ? 3 : (t >= 2 ? 2 : (t >= 1 ? 1 : 0))));
+                    const memberList = Object.entries(day.members || {}).map(([name, cnt]) => `${name}: ${cnt}`).join(', ');
+                    const title = t > 0 ? `${day.date} — ${t} contribution${t>1?'s':''}\n${memberList}` : `${day.date} — No activity`;
+                    return `<div class="heatmap-cell${level > 0 ? ' level-' + level : ''}" title="${title.replace(/"/g, '&quot;')}" style="cursor:${t > 0 ? 'pointer' : 'default'};"></div>`;
+                }).join('');
+                return `<div class="heatmap-row">${cells}</div>`;
+            }).join('');
+        } catch (_) {
+            grid.innerHTML = '<div style="padding:12px;color:var(--error);font-size:12px;">Failed to load</div>';
+        }
+    }, 50);
+    return '';
+}
+
+function renderOverview(detail) {
+    const { project, members, milestones, requirements, feedback } = detail;
+    const openReqs = requirements.filter((r) => r.status !== 'done').length;
+    const openPosts = feedback.filter((f) => f.status === 'open').length;
+
     return `
-        <article class="member-card">
-            <div>
-                <strong>${escapeHtml(member.user_name)}</strong>
-                <p>${roleLabel(member.role)} · 加入时间 ${escapeHtml(member.joined_at || '-')}</p>
-            </div>
-            <div class="member-ops">
-                ${canManage ? `
-                    <select id="member-role-${encodeURIComponent(member.user_name)}">
-                        <option value="leader" ${member.role === 'leader' ? 'selected' : ''}>负责人</option>
-                        <option value="core_member" ${member.role === 'core_member' ? 'selected' : ''}>核心成员</option>
-                        <option value="member" ${member.role === 'member' ? 'selected' : ''}>普通成员</option>
-                    </select>
-                    <button onclick="updateProjectMemberRole('${encodeURIComponent(member.user_name)}')">改角色</button>
-                    ${(member.user_name !== currentUser || member.role !== 'leader') ? `<button class="danger" onclick="removeProjectMember('${encodeURIComponent(member.user_name)}')">移出</button>` : ''}
-                ` : ''}
-                ${!canManage && canSelfLeave ? `<button class="danger" onclick="removeProjectMember('${encodeURIComponent(member.user_name)}')">退出项目</button>` : ''}
-            </div>
-        </article>
-    `;
-}
+        <div>
+            <p class="cm-eyebrow">Overview</p>
+            <h2>${escapeHtml(project.title || 'Untitled')}</h2>
+        </div>
 
-function renderActivityView(detail) {
-    const project = detail.project;
-    const feedback = detail.feedback;
-    const feedbackCanManage = detail.feedbackCanManage;
-    const members = detail.members;
-    const filtered = filterCollaborativePosts(feedback);
+        ${buildTimeline(milestones)}
+        ${renderMilestoneManager(detail)}
+        ${buildHeatmapJS()}
 
-    return `
-        <section class="team-card">
-            <div class="team-card-head">
-                <div>
-                    <p class="team-eyebrow">协作贴</p>
-                    <h2>${escapeHtml(project.title || '未命名项目')}</h2>
+        <div class="project-bento">
+            ${buildHeatmapPlaceholder()}
+
+            <div class="cm-glass-card">
+                <h3 style="margin:0 0 14px;font-size:17px;font-weight:800;">Current Sprint</h3>
+                <div style="display:flex;gap:8px;margin-bottom:14px;">
+                    <span style="font-size:13px;font-weight:700;color:var(--on-surface);">${requirements.length} tasks</span>
+                    <span style="font-size:13px;color:var(--outline);">${openReqs} open</span>
                 </div>
-                <button type="button" class="team-panel-ghost" onclick="switchView('issues')">去需求页</button>
+                ${requirements.slice(0, 6).map((r) => {
+                    const done = r.status === 'done';
+                    const prio = (r.priority || 'medium').toLowerCase();
+                    return `
+                        <div class="sprint-task${done ? ' done' : ''}">
+                            <div class="sprint-task-icon">${done ? '<span class="material-symbols-outlined" style="font-size:12px;">check</span>' : ''}</div>
+                            <div class="sprint-task-info">
+                                <div class="sprint-task-title">${escapeHtml(r.title || 'Untitled')}</div>
+                                <div class="sprint-task-meta">
+                                    <span>${escapeHtml(r.assignee || 'Unassigned')}</span>
+                                    ${r.due_date ? `<span>Due ${escapeHtml(r.due_date)}</span>` : ''}
+                                </div>
+                            </div>
+                            <span class="sprint-task-priority ${prio}">${priorityLabel(r.priority)}</span>
+                        </div>
+                    `;
+                }).join('') || '<p style="font-size:13px;color:var(--outline);padding:12px 0;">No tasks yet</p>'}
+                <div class="sprint-add-task" onclick="switchView('issues')">+ Add task</div>
             </div>
-            <div class="issue-compose-grid">
-                <div class="issue-compose-main">
-                    <input id="collab-title" type="text" placeholder="标题">
-                    <textarea id="collab-body" rows="7" placeholder="把背景、卡点、做法和你希望别人怎么接手写清楚"></textarea>
-                </div>
-                <aside class="issue-compose-meta">
-                    <label for="collab-category">类型</label>
-                    <select id="collab-category">
-                        <option value="discussion">讨论</option>
-                        <option value="task">任务</option>
-                        <option value="blocker">卡点</option>
-                        <option value="resource">资源</option>
-                        <option value="other">其他</option>
-                    </select>
-                    <button class="issue-submit-btn" onclick="createFeedback()">发布协作贴</button>
-                </aside>
-            </div>
-        </section>
 
-        <section class="team-card">
-            <div class="team-card-head">
-                <div>
-                    <h3>协作贴列表</h3>
-                </div>
-                <select id="activity-status-filter" onchange="setActivityStatusFilter(this.value)">
-                    <option value="all" ${state.filters.activityStatus === 'all' ? 'selected' : ''}>全部状态</option>
-                    <option value="open" ${state.filters.activityStatus === 'open' ? 'selected' : ''}>进行中</option>
-                    <option value="resolved" ${state.filters.activityStatus === 'resolved' ? 'selected' : ''}>已关闭</option>
-                </select>
-            </div>
-            <div class="issue-list">
-                ${filtered.map((item) => renderFeedbackItem(item, feedbackCanManage)).join('') || '<p class="team-empty">暂无协作贴</p>'}
-            </div>
-        </section>
-    `;
-}
-
-function filterCollaborativePosts(posts) {
-    let list = [...posts];
-    if (state.filters.activityStatus !== 'all') {
-        list = list.filter((item) => item.status === state.filters.activityStatus);
-    }
-
-    list.sort((left, right) => {
-        const leftTime = new Date(String(left.updated_at || left.created_at || '').replace(' ', 'T')).getTime() || 0;
-        const rightTime = new Date(String(right.updated_at || right.created_at || '').replace(' ', 'T')).getTime() || 0;
-        return rightTime - leftTime || Number(right.id || 0) - Number(left.id || 0);
-    });
-
-    return list;
-}
-
-function setActivityStatusFilter(value) {
-    state.filters.activityStatus = value || 'all';
-    renderCurrentView();
-}
-
-function renderFeedbackItem(item, canManage) {
-    const post = splitPostContent(item.content);
-    const canDelete = item.author === currentUser || canManage;
-    const actionLabel = item.status === 'resolved' ? '重开' : '关闭';
-    return `
-        <article class="issue-card">
-            <div class="issue-card-head">
-                <div>
-                    <strong>${escapeHtml(post.title)}</strong>
-                    <div class="issue-card-meta">
-                        <span class="issue-chip">${item.status === 'resolved' ? '已关闭' : '进行中'}</span>
-                        <span class="issue-chip issue-chip-soft">${escapeHtml(item.category || 'discussion')}</span>
-                        <span class="issue-chip issue-chip-soft">${escapeHtml(item.target_user || '全员可看')}</span>
+            <div class="cm-glass-card project-bento-full">
+                <h3 style="margin:0 0 14px;font-size:17px;font-weight:800;">Summary</h3>
+                <div style="display:flex;gap:32px;flex-wrap:wrap;margin-bottom:28px;">
+                    <div style="text-align:center;flex:1;min-width:80px;">
+                        <div style="font-size:28px;font-weight:800;color:var(--primary);">${members.length}</div>
+                        <div style="font-size:12px;color:var(--on-surface-variant);font-weight:700;">Members</div>
+                    </div>
+                    <div style="text-align:center;flex:1;min-width:80px;">
+                        <div style="font-size:28px;font-weight:800;color:var(--primary);">${openReqs}</div>
+                        <div style="font-size:12px;color:var(--on-surface-variant);font-weight:700;">Open Requirements</div>
+                    </div>
+                    <div style="text-align:center;flex:1;min-width:80px;">
+                        <div style="font-size:28px;font-weight:800;color:var(--primary);">${openPosts}</div>
+                        <div style="font-size:12px;color:var(--on-surface-variant);font-weight:700;">Open Posts</div>
                     </div>
                 </div>
-                <div class="issue-card-side-meta">
-                    <span>${escapeHtml(item.author || '系统')}</span>
-                    <span>${formatTime(item.created_at)}</span>
+                <h4 style="margin:0 0 8px;font-size:14px;font-weight:800;cursor:pointer;padding:8px 10px;border-radius:6px;transition:background 0.15s ease,color 0.15s ease;"
+                    onclick="switchView('checkins')"
+                    onmouseover="this.style.background='var(--surface-container-low)';this.style.color='var(--primary)';"
+                    onmouseout="this.style.background='transparent';this.style.color='';">
+                    Recent Check-ins <span class="material-symbols-outlined" style="font-size:16px;vertical-align:middle;">arrow_forward</span>
+                </h4>
+                <div style="max-height:160px;overflow:auto;">
+                    ${(detail.checkins || []).slice(0, 5).map((c) => `
+                        <div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px dashed rgba(194,198,214,0.3);font-size:13px;">
+                            <span style="font-weight:700;color:var(--on-surface);min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;">${escapeHtml(c.user_name || '?')}</span>
+                            <span style="color:var(--on-surface-variant);margin:0 12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:2;">${escapeHtml(c.progress_note || '')}</span>
+                            <span style="font-size:11px;color:var(--outline);flex-shrink:0;">${formatTime(c.created_at)}</span>
+                        </div>
+                    `).join('') || '<p style="font-size:12px;color:var(--outline);">No check-ins yet</p>'}
                 </div>
             </div>
-            <p class="issue-card-desc">${escapeHtml(post.body || '暂无补充说明')}</p>
-            ${item.resolution_note ? `<p class="issue-card-desc">处理说明：${escapeHtml(item.resolution_note)}</p>` : ''}
-            <div class="issue-card-actions">
-                ${canManage ? `<button onclick="updateFeedback(${item.id}, '${item.status === 'resolved' ? 'open' : 'resolved'}')">${actionLabel}</button>` : ''}
-                ${canDelete ? `<button class="danger" onclick="deleteFeedback(${item.id})">${item.author === currentUser ? '撤回' : '删除'}</button>` : ''}
+        </div>
+
+        ${detail.canManage ? `
+        <div class="cm-glass-card" style="margin-top:20px;">
+            <h3 style="margin:0 0 12px;font-size:17px;font-weight:800;">Actions</h3>
+            <div style="display:flex;gap:10px;flex-wrap:wrap;">
+                <button onclick="changeProjectStatus('recruiting')" class="cm-button ghost">Set Recruiting</button>
+                <button onclick="changeProjectStatus('executing')" class="cm-button">Start Execution</button>
+                <button onclick="changeProjectStatus('completed')" class="cm-button secondary">Complete</button>
             </div>
-        </article>
+        </div>` : ''}
+
+        ${project.status === 'completed' ? renderRatingBoard(detail) : ''}
     `;
 }
 
-function renderCheckinsView(detail) {
-    const project = detail.project;
-    const checkins = detail.checkins;
-    const canManage = detail.canManage;
-
+/* ── Issues/Requirements View ── */
+function renderIssues(detail) {
+    const { requirements, members, canManage } = detail;
     return `
-        <section class="team-card">
-            <div class="team-card-head">
-                <div>
-                    <p class="team-eyebrow">打卡</p>
-                    <h2>${escapeHtml(project.title || '未命名项目')}</h2>
+        <div style="margin-bottom:18px;">
+            <p class="cm-eyebrow">Requirements</p>
+            <h2>Task Management</h2>
+        </div>
+        ${canManage ? `
+        <div class="cm-glass-card" style="margin-bottom:18px;">
+            <h3 style="margin:0 0 12px;font-size:16px;font-weight:800;">New Requirement</h3>
+            <div class="issue-compose-grid">
+                <div class="field-stack">
+                    <input id="new-req-title" type="text" placeholder="Title">
+                    <textarea id="new-req-desc" rows="2" placeholder="Description"></textarea>
                 </div>
-                <button type="button" class="team-panel-ghost" onclick="switchView('activity')">去协作贴</button>
-            </div>
-            <div class="checkin-compose">
-                <input id="checkin-note" type="text" placeholder="今天完成了什么？">
-                <input id="checkin-completion" type="number" min="0" max="100" placeholder="完成度 0-100">
-                <button onclick="submitCheckin()">提交打卡</button>
-            </div>
-            <div class="checkin-list">
-                ${checkins.length ? checkins.map((item) => renderCheckinItem(item, canManage)).join('') : '<p class="team-empty">暂无打卡记录</p>'}
-            </div>
-        </section>
-    `;
-}
-
-function renderCheckinItem(item, canManage) {
-    const canDelete = canManage || item.user_name === currentUser;
-    return `
-        <article class="checkin-card">
-            <div>
-                <strong>${escapeHtml(item.user_name)} · ${item.task_completion}%</strong>
-                <p>${escapeHtml(item.progress_note || '无')}
-                </p>
-                <span class="timeline-meta">${formatTime(item.created_at)}</span>
-            </div>
-            ${canDelete ? `<button class="danger" onclick="deleteCheckin(${item.id})">删除</button>` : ''}
-        </article>
-    `;
-}
-
-function renderRatingBoard(project, members, scoreboard) {
-    const revieweeOptions = members
-        .filter((member) => member.user_name !== currentUser)
-        .map((member) => `<option value="${escapeHtml(member.user_name)}">${escapeHtml(member.user_name)}</option>`)
-        .join('');
-
-    return `
-        <section class="team-card">
-            <div class="team-card-head">
-                <div>
-                    <h3>结项评分看板</h3>
+                <div class="field-stack">
+                    <select id="new-req-priority"><option value="medium">Medium</option><option value="high">High</option><option value="low">Low</option></select>
+                    <input id="new-req-assignee" type="text" placeholder="Assignee name">
+                    <button class="issue-submit-btn" onclick="createRequirement()">Create</button>
                 </div>
             </div>
-            <div class="team-score-wrap">
-                <table class="score-table">
-                    <thead>
-                        <tr>
-                            <th>成员</th><th>打卡率</th><th>完成度</th><th>客观分</th><th>主观分</th><th>总分</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        ${scoreboard.map((item) => `<tr><td>${escapeHtml(item.user_name)}</td><td>${item.checkin_rate}%</td><td>${item.task_completion_avg}%</td><td>${item.objective_score}</td><td>${item.subjective_score}</td><td>${item.final_score}</td></tr>`).join('')}
-                    </tbody>
-                </table>
-            </div>
-            <div class="rating-compose">
-                <select id="rating-reviewee">
-                    <option value="">选择队友</option>
-                    ${revieweeOptions}
-                </select>
-                <select id="rating-score">
-                    <option value="5">5分</option>
-                    <option value="4">4分</option>
-                    <option value="3">3分</option>
-                    <option value="2">2分</option>
-                    <option value="1">1分</option>
-                </select>
-                <input id="rating-comment" type="text" placeholder="评价说明（可选）">
-                <button onclick="submitProjectRating()">提交互评</button>
-            </div>
-        </section>
+        </div>` : ''}
+        <div class="cm-glass-card">
+            <h3 style="margin:0 0 14px;font-size:16px;font-weight:800;">All Requirements (${requirements.length})</h3>
+            ${requirements.map((r) => `
+                <div class="issue-card">
+                    <div class="issue-card-head">
+                        <div>
+                            <strong>${escapeHtml(r.title)}</strong>
+                            <p style="font-size:12px;color:var(--outline);margin:2px 0 0;">${statusLabel(r.status)} · ${priorityLabel(r.priority)} · ${escapeHtml(r.assignee || 'Unassigned')}</p>
+                        </div>
+                        <span class="cm-chip">${priorityLabel(r.priority)}</span>
+                    </div>
+                    <p style="font-size:13px;color:var(--on-surface-variant);">${escapeHtml(r.description || '')}</p>
+                    ${canManage ? `
+                    <div style="display:flex;gap:8px;margin-top:10px;">
+                        ${r.status !== 'done' ? `<button class="cm-button ghost" style="font-size:12px;min-height:32px;" onclick="updateRequirementStatus(${r.id},'done')">Mark Done</button>` : ''}
+                        ${r.status !== 'in_progress' && r.status !== 'done' ? `<button class="cm-button ghost" style="font-size:12px;min-height:32px;" onclick="updateRequirementStatus(${r.id},'in_progress')">Start</button>` : ''}
+                    </div>` : ''}
+                </div>
+            `).join('') || '<p class="team-empty">No requirements</p>'}
+        </div>
     `;
 }
 
+/* ── Members View ── */
+function renderMembers(detail) {
+    const { members, canManage } = detail;
+    const leader = members.find((m) => m.role === 'leader');
+    const others = members.filter((m) => m.role !== 'leader');
+    return `
+        <div style="margin-bottom:18px;">
+            <p class="cm-eyebrow">Team</p>
+            <h2>Members (${members.length})</h2>
+        </div>
+        ${canManage ? `
+        <div class="cm-glass-card" style="margin-bottom:18px;">
+            <h3 style="margin:0 0 12px;font-size:16px;font-weight:800;">Add Member</h3>
+            <div class="member-compose">
+                <input id="new-member-name" type="text" placeholder="Username">
+                <select id="new-member-role"><option value="core_member">Core Member</option><option value="member">Member</option></select>
+                <button onclick="addMember()">Add</button>
+            </div>
+        </div>` : ''}
+        <div class="cm-glass-card">
+            ${leader ? `
+            <div class="member-card" style="border:1px solid rgba(0,88,190,0.2);background:var(--primary-container);">
+                <div style="display:flex;align-items:center;gap:12px;">
+                    <span class="cm-avatar-sm" data-user="${encodeURIComponent(leader.user_name || '')}" style="background:var(--primary);color:var(--on-primary);">${(leader.user_name||'?')[0].toUpperCase()}</span>
+                    <div>
+                        <a href="profile.html?user=${encodeURIComponent(leader.user_name || '')}" style="color:var(--on-primary-container);text-decoration:none;font-weight:800;">${escapeHtml(leader.user_name)}</a>
+                        <span class="cm-chip" style="margin-left:8px;">Leader</span>
+                    </div>
+                </div>
+            </div>` : ''}
+            ${others.map((m) => {
+                const isSelf = m.user_name === currentUser;
+                const nameEscaped = escapeHtml(m.user_name);
+                let buttons = '';
+                if (canManage && m.role !== 'leader') {
+                    buttons += '<button class="cm-button ghost" style="font-size:11px;min-height:28px;margin-left:auto;" onclick="removeMember(&quot;' + nameEscaped + '&quot;)">Remove</button>';
+                }
+                if (isSelf && m.role !== 'leader') {
+                    buttons += '<button class="cm-button ghost" style="font-size:11px;min-height:28px;margin-left:auto;color:var(--error);" onclick="openExitRequest()">Apply to Leave</button>';
+                }
+                return ['<div class="member-card">',
+                    '<div style="display:flex;align-items:center;gap:12px;">',
+                    '<span class="cm-avatar-sm" data-user="' + encodeURIComponent(m.user_name || '') + '">' + (m.user_name||'?')[0].toUpperCase() + '</span>',
+                    '<div><a href="profile.html?user=' + encodeURIComponent(m.user_name || '') + '" style="color:var(--on-surface);text-decoration:none;font-weight:700;">' + nameEscaped + '</a>',
+                    '<span style="font-size:12px;color:var(--outline);margin-left:8px;">' + (m.role === 'core_member' ? 'Core Member' : 'Member') + '</span></div>',
+                    buttons,
+                    '</div></div>'
+                ].join('');
+            }).join('')}
+            ${!members.length ? '<p class="team-empty">No members</p>' : ''}
+        </div>
+        ${canManage ? `<div id="exit-requests-section" style="margin-top:16px;"></div>` : ''}
+        <div id="exit-request-modal" style="display:none;position:fixed;inset:0;z-index:200;background:rgba(18,28,42,0.4);align-items:center;justify-content:center;" onclick="if(event.target===this)closeExitRequest()">
+            <div style="width:min(400px,94vw);background:rgba(255,255,255,0.98);border-radius:16px;padding:24px;">
+                <h3 style="margin:0 0 16px;">Apply to Leave Project</h3>
+                <p style="font-size:13px;color:var(--on-surface-variant);margin-bottom:12px;">退出后负责人将对你进行评价（1-5分），评价结果将录入互评系统。</p>
+                <div class="field-stack">
+                    <label class="form-label">Reason (optional)</label>
+                    <textarea id="exit-reason" rows="2" placeholder="Why are you leaving?"></textarea>
+                    <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:12px;">
+                        <button class="cm-button ghost" onclick="closeExitRequest()">Cancel</button>
+                        <button class="cm-button" style="background:var(--error);color:#fff;" onclick="submitExitRequest()">Submit</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    `;
+}
+
+/* ── Activity/Collaboration View ── */
+function renderActivity(detail) {
+    const { feedback, canManage, feedbackCanManage } = detail;
+    return `
+        <div style="margin-bottom:18px;">
+            <p class="cm-eyebrow">Collaboration</p>
+            <h2>Posts (${feedback.length})</h2>
+        </div>
+
+        <div class="cm-glass-card" style="margin-bottom:18px;">
+            <h3 style="margin:0 0 12px;font-size:16px;font-weight:800;">New Post</h3>
+            <div class="field-stack">
+                <label class="form-label">Tags</label>
+                <div id="collab-label-picker" style="display:flex; gap:8px; flex-wrap:wrap; align-items:center;"></div>
+
+                <label class="form-label" for="collab-title">Title</label>
+                <input id="collab-title" type="text" placeholder="e.g., Looking for a frontend partner">
+
+                <label class="form-label" for="collab-body">Details</label>
+                <textarea id="collab-body" rows="4" placeholder="Describe what you are working on and who you are looking for..."></textarea>
+
+                <div class="publish-checkboxes">
+                    <label class="checkbox-disabled"><input type="checkbox" id="collab-requires-management" checked disabled> Project management <span style="font-size:11px;color:var(--outline);">(auto-enabled)</span></label>
+                    <label><input type="checkbox" id="collab-compensation" onchange="toggleCollabAmount()"> Compensation</label>
+                    <input type="text" id="collab-amount" placeholder="Amount" style="max-width:120px; display:none;">
+                    <label><input type="checkbox" id="collab-cross-campus"> Cross-campus</label>
+                </div>
+
+                <div style="display:flex; justify-content:flex-end; gap:8px;">
+                    <input id="collab-target" type="text" placeholder="Target user (optional)" style="max-width:200px;">
+                    <button class="btn-publish" onclick="createFeedback()">
+                        <span class="material-symbols-outlined">send</span> Publish
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <div class="cm-glass-card">
+            <h3 style="margin:0 0 14px;font-size:16px;font-weight:800;">Recent Posts</h3>
+            ${feedback.map((f) => `
+                <div class="feedback-card">
+                    <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;margin-bottom:8px;">
+                        <strong>${escapeHtml(f.author || 'Unknown')}</strong>
+                        <span class="cm-chip" style="font-size:10px;">${f.status === 'resolved' ? 'Resolved' : 'Open'}</span>
+                    </div>
+                    <p style="font-size:13px;color:var(--on-surface-variant);line-height:1.6;">${escapeHtml(f.content || '')}</p>
+                    <div style="font-size:11px;color:var(--outline);margin-top:8px;">${formatTime(f.created_at)}${f.target_user ? ' · To: ' + escapeHtml(f.target_user) : ''}</div>
+                    ${(canManage || feedbackCanManage) && f.status !== 'resolved' ? `
+                    <button class="cm-button ghost" style="font-size:11px;min-height:28px;margin-top:8px;" onclick="resolveFeedback(${f.id})">Resolve</button>` : ''}
+                </div>
+            `).join('') || '<p class="team-empty">No collaboration posts</p>'}
+        </div>
+    `;
+}
+
+function toggleCollabAmount() {
+    const checked = document.getElementById('collab-compensation')?.checked;
+    const amount = document.getElementById('collab-amount');
+    if (amount) amount.style.display = checked ? '' : 'none';
+}
+
+/* ── Check-ins View ── */
+function renderCheckins(detail) {
+    const { checkins, canManage } = detail;
+    return `
+        <div style="margin-bottom:18px;">
+            <p class="cm-eyebrow">Check-ins</p>
+            <h2>Progress (${checkins.length})</h2>
+        </div>
+        <div class="cm-glass-card" style="margin-bottom:18px;">
+            <h3 style="margin:0 0 12px;font-size:16px;font-weight:800;">New Check-in</h3>
+            <div class="field-stack">
+                <textarea id="checkin-note" rows="2" placeholder="What did you accomplish?"></textarea>
+                <div style="display:flex;justify-content:flex-end;">
+                    <button onclick="submitCheckin()">Submit</button>
+                </div>
+            </div>
+        </div>
+        <div class="cm-glass-card">
+            ${checkins.map((c) => `
+                <div class="checkin-card">
+                    <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;margin-bottom:6px;">
+                        <strong>${escapeHtml(c.user_name || 'Unknown')}</strong>
+                        <span style="font-size:12px;color:var(--outline);">${formatTime(c.created_at)}</span>
+                    </div>
+                    <p style="font-size:13px;color:var(--on-surface-variant);">${escapeHtml(c.progress_note || '')}</p>
+                </div>
+            `).join('') || '<p class="team-empty">No check-ins</p>'}
+        </div>
+    `;
+}
+
+/* ── Rating Board ── */
+function starRatingHTML(current) {
+    let html = '<div style="display:flex;gap:4px;align-items:center;">';
+    for (let i = 1; i <= 5; i++) {
+        const filled = i <= current;
+        html += `<span class="material-symbols-outlined" style="font-size:22px;cursor:pointer;color:${filled ? 'var(--warning)' : 'var(--outline-variant)'};" onclick="setRatingStar(${i})">${filled ? 'star' : 'star'}</span>`;
+    }
+    html += '</div>';
+    return html;
+}
+
+function renderRatingBoard(detail) {
+    const { project, members, scoreboard } = detail;
+    const starHtml = (score) => {
+        let h = '';
+        for (let i = 1; i <= 5; i++) h += `<span style="color:${i <= Math.round(score/20) ? 'var(--warning)' : 'var(--outline-variant)'};font-size:14px;">★</span>`;
+        return h;
+    };
+    return `
+        <div class="cm-glass-card" style="margin-top:20px;">
+            <h3 style="margin:0 0 14px;font-size:17px;font-weight:800;">Project Ratings</h3>
+            ${scoreboard && scoreboard.length ? `
+                <div style="display:flex;flex-direction:column;gap:10px;margin-bottom:14px;">
+                    ${scoreboard.map((s) => `
+                        <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding:8px 12px;background:var(--surface-container-low);border-radius:8px;">
+                            <span style="font-weight:700;font-size:13px;">${escapeHtml(s.user_name)}</span>
+                            <span style="font-size:13px;">${starHtml(s.final_score || s.subjective_score || 0)}</span>
+                            <span style="font-weight:700;color:var(--primary);font-size:14px;">${s.final_score != null ? Number(s.final_score).toFixed(1) : '-'}</span>
+                            <span style="font-size:11px;color:var(--outline);">${s.subjective_count || 0} reviews</span>
+                        </div>
+                    `).join('')}
+                </div>` : '<p class="team-empty">No ratings yet</p>'}
+            ${members.length > 1 ? `
+            <div style="border-top:1px solid rgba(194,198,214,0.3);padding-top:14px;">
+                <h4 style="font-size:14px;font-weight:800;margin-bottom:8px;">Submit Peer Review</h4>
+                <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+                    <select id="rating-reviewee" style="max-width:160px;min-height:38px;">
+                        <option value="">Select member</option>
+                        ${members.filter((m) => m.user_name !== currentUser).map((m) => `<option value="${escapeHtml(m.user_name)}">${escapeHtml(m.user_name)}</option>`).join('')}
+                    </select>
+                    <div id="rating-stars">${starRatingHTML(0)}</div>
+                    <input id="rating-comment" type="text" placeholder="Comment" style="flex:1;min-width:140px;">
+                    <button onclick="submitRating()">Submit</button>
+                </div>
+            </div>` : ''}
+        </div>
+    `;
+}
+
+function setRatingStar(n) {
+    window._ratingValue = n;
+    document.getElementById('rating-stars').innerHTML = starRatingHTML(n);
+}
+
+/* ── Milestone Operations ── */
+async function createMilestone() {
+    if (!state.activeProjectId) return;
+    const title = document.getElementById('new-ms-title')?.value?.trim();
+    const dueDate = document.getElementById('new-ms-date')?.value || '';
+    if (!title) return alert('Milestone title required');
+    try {
+        const resp = await fetch(`http://localhost:3000/api/projects/${state.activeProjectId}/milestones`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ actor: currentUser, title, due_date: dueDate })
+        });
+        const json = await resp.json();
+        if (json.success) {
+            document.getElementById('new-ms-title').value = '';
+            document.getElementById('new-ms-date').value = '';
+            loadProjectDetail(state.activeProjectId);
+        } else alert(json.message || 'Failed');
+    } catch (_) { alert('Network error'); }
+}
+
+async function toggleMilestone(mid, newStatus) {
+    if (!state.activeProjectId) return;
+    try {
+        const resp = await fetch(`http://localhost:3000/api/projects/${state.activeProjectId}/milestones/${mid}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ actor: currentUser, status: newStatus })
+        });
+        const json = await resp.json();
+        if (json.success) loadProjectDetail(state.activeProjectId);
+        else alert(json.message || 'Failed');
+    } catch (_) { alert('Network error'); }
+}
+
+async function deleteMilestone(mid) {
+    if (!state.activeProjectId || !confirm('Delete this milestone?')) return;
+    try {
+        const resp = await fetch(`http://localhost:3000/api/projects/${state.activeProjectId}/milestones/${mid}`, {
+            method: 'DELETE',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ actor: currentUser })
+        });
+        const json = await resp.json();
+        if (json.success) loadProjectDetail(state.activeProjectId);
+        else alert(json.message || 'Failed');
+    } catch (_) { alert('Network error'); }
+}
+
+/* ── API Operations ── */
 async function changeProjectStatus(status) {
+    if (!state.activeProjectId) return;
     try {
         const resp = await fetch(`http://localhost:3000/api/projects/${state.activeProjectId}/status`, {
             method: 'PUT',
@@ -992,237 +892,161 @@ async function changeProjectStatus(status) {
             body: JSON.stringify({ actor: currentUser, status })
         });
         const json = await resp.json();
-        if (!json.success) return alert(json.message || '状态更新失败');
-        await loadProjectDetail(state.activeProjectId);
-    } catch (err) {
-        alert('网络错误，状态更新失败');
-    }
+        if (json.success) { loadProjects(); loadProjectDetail(state.activeProjectId); }
+        else alert(json.message || 'Failed');
+    } catch (_) { alert('Network error'); }
 }
 
 async function createRequirement() {
-    const title = (document.getElementById('new-req-title')?.value || '').trim();
-    const description = (document.getElementById('new-req-desc')?.value || '').trim();
+    if (!state.activeProjectId) return;
+    const title = document.getElementById('new-req-title')?.value?.trim();
+    const desc = document.getElementById('new-req-desc')?.value?.trim();
     const priority = document.getElementById('new-req-priority')?.value || 'medium';
-    const assignee = document.getElementById('new-req-assignee')?.value || '';
-
-    if (!title) return alert('请输入帖子标题');
-
+    const assignee = document.getElementById('new-req-assignee')?.value?.trim();
+    if (!title) return alert('Title required');
     try {
         const resp = await fetch(`http://localhost:3000/api/projects/${state.activeProjectId}/requirements`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ actor: currentUser, title, description, priority, assignee })
+            body: JSON.stringify({ actor: currentUser, title, description: desc, priority, assignee })
         });
         const json = await resp.json();
-        if (!json.success) return alert(json.message || '发布帖子失败');
-        clearDrafts(['new-req-title', 'new-req-desc', 'new-req-priority', 'new-req-assignee']);
-        const priorityField = document.getElementById('new-req-priority');
-        if (priorityField) priorityField.value = 'medium';
-        await loadProjectDetail(state.activeProjectId);
-    } catch (err) {
-        alert('网络错误，发布帖子失败');
-    }
+        if (json.success) {
+            document.getElementById('new-req-title').value = '';
+            document.getElementById('new-req-desc').value = '';
+            loadProjectDetail(state.activeProjectId);
+        } else alert(json.message || 'Failed');
+    } catch (_) { alert('Network error'); }
 }
 
-async function updateRequirementStatus(requirementId) {
-    const status = document.getElementById(`req-status-${requirementId}`)?.value || 'open';
+async function updateRequirementStatus(rid, status) {
+    if (!state.activeProjectId) return;
     try {
-        const resp = await fetch(`http://localhost:3000/api/projects/${state.activeProjectId}/requirements/${requirementId}`, {
+        const resp = await fetch(`http://localhost:3000/api/projects/${state.activeProjectId}/requirements/${rid}`, {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ actor: currentUser, status })
         });
         const json = await resp.json();
-        if (!json.success) return alert(json.message || '状态更新失败');
-        await loadProjectDetail(state.activeProjectId);
-    } catch (err) {
-        alert('网络错误，状态更新失败');
-    }
+        if (json.success) loadProjectDetail(state.activeProjectId);
+        else alert(json.message || 'Failed');
+    } catch (_) { alert('Network error'); }
 }
 
-async function reassignRequirement(requirementId) {
-    const assignee = document.getElementById(`req-assignee-${requirementId}`)?.value || '';
-    try {
-        const resp = await fetch(`http://localhost:3000/api/projects/${state.activeProjectId}/requirements/${requirementId}`, {
-            method: 'PUT',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ actor: currentUser, assignee })
-        });
-        const json = await resp.json();
-        if (!json.success) return alert(json.message || '改派失败');
-        await loadProjectDetail(state.activeProjectId);
-    } catch (err) {
-        alert('网络错误，改派失败');
-    }
-}
-
-async function addProjectMember() {
-    const userName = (document.getElementById('new-member-name')?.value || '').trim();
+async function addMember() {
+    if (!state.activeProjectId) return;
+    const name = document.getElementById('new-member-name')?.value?.trim();
     const role = document.getElementById('new-member-role')?.value || 'member';
-    if (!userName) return alert('请输入成员用户名');
-
+    if (!name) return alert('Username required');
     try {
         const resp = await fetch(`http://localhost:3000/api/projects/${state.activeProjectId}/members`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ actor: currentUser, user_name: userName, role })
+            body: JSON.stringify({ actor: currentUser, user_name: name, role })
         });
         const json = await resp.json();
-        if (!json.success) return alert(json.message || '新增成员失败');
-        clearDrafts(['new-member-name', 'new-member-role']);
-        const roleField = document.getElementById('new-member-role');
-        if (roleField) roleField.value = 'member';
-        await loadProjectDetail(state.activeProjectId);
-    } catch (err) {
-        alert('网络错误，新增成员失败');
-    }
+        if (json.success) {
+            document.getElementById('new-member-name').value = '';
+            loadProjectDetail(state.activeProjectId);
+        } else alert(json.message || 'Failed');
+    } catch (_) { alert('Network error'); }
 }
 
-async function updateProjectMemberRole(encodedUserName) {
-    const userName = decodeURIComponent(encodedUserName || '');
-    const role = document.getElementById(`member-role-${encodedUserName}`)?.value || 'member';
-    if (!userName) return;
-
+async function removeMember(memberName) {
+    if (!state.activeProjectId || !confirm('Remove ' + memberName + '?')) return;
     try {
-        const resp = await fetch(`http://localhost:3000/api/projects/${state.activeProjectId}/members/${encodeURIComponent(userName)}`, {
-            method: 'PUT',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ actor: currentUser, role })
-        });
-        const json = await resp.json();
-        if (!json.success) return alert(json.message || '角色调整失败');
-        await loadProjectDetail(state.activeProjectId);
-    } catch (err) {
-        alert('网络错误，角色调整失败');
-    }
-}
-
-async function removeProjectMember(encodedUserName) {
-    const userName = decodeURIComponent(encodedUserName || '');
-    if (!userName) return;
-    if (!confirm(`确定将 ${userName} 移出项目吗？`)) return;
-
-    let reassignTo = '';
-    const canManage = state.activeProjectDetail && state.activeProjectDetail.can_manage;
-    if (canManage) {
-        reassignTo = prompt('如果该成员有未完成需求，可输入改派目标成员，留空则取消指派') || '';
-    }
-
-    try {
-        const resp = await fetch(`http://localhost:3000/api/projects/${state.activeProjectId}/members/${encodeURIComponent(userName)}`, {
+        const resp = await fetch(`http://localhost:3000/api/projects/${state.activeProjectId}/members/${encodeURIComponent(memberName)}`, {
             method: 'DELETE',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ actor: currentUser, reassign_to: reassignTo.trim() })
+            body: JSON.stringify({ actor: currentUser })
         });
         const json = await resp.json();
-        if (!json.success) return alert(json.message || '成员移除失败');
-        await loadProjectDetail(state.activeProjectId);
-    } catch (err) {
-        alert('网络错误，成员移除失败');
-    }
+        if (json.success) loadProjectDetail(state.activeProjectId);
+        else alert(json.message || 'Failed');
+    } catch (_) { alert('Network error'); }
 }
 
 async function createFeedback() {
-    const title = (document.getElementById('collab-title')?.value || '').trim();
-    const body = (document.getElementById('collab-body')?.value || '').trim();
-    const category = document.getElementById('collab-category')?.value || 'discussion';
-    const target = document.getElementById('collab-target')?.value || '';
-    const content = composePostContent(title, body);
-    if (!content) return alert('请输入标题或内容');
+    if (!state.activeProjectId) return;
+    const title = document.getElementById('collab-title')?.value?.trim();
+    const body = document.getElementById('collab-body')?.value?.trim();
+    const target = document.getElementById('collab-target')?.value?.trim();
+    const requiresMgmt = document.getElementById('collab-requires-management')?.checked;
+    const compensation = document.getElementById('collab-compensation')?.checked;
+    const crossCampus = document.getElementById('collab-cross-campus')?.checked;
+    const amount = document.getElementById('collab-amount')?.value?.trim();
+    const label = state._collabLabel || '';
+
+    if (!title || !body) return alert('Title and content required');
+
+    let finalLabel = label;
+    if (label === '自定义') {
+        const customText = (document.getElementById('collab-custom-label')?.value || '').trim();
+        finalLabel = customText || label;
+    }
+
+    let fullContent = title + '\n\n' + body;
+    if (finalLabel) fullContent = '[' + finalLabel + '] ' + fullContent;
+    if (requiresMgmt) fullContent += '\n[项目管理]';
+    if (compensation) fullContent += '\n[报酬: ' + (amount || '面议') + ']';
+    if (crossCampus) fullContent += '\n[跨校区]';
+    if (target) fullContent += '\n[目标人选: ' + target + ']';
 
     try {
         const resp = await fetch(`http://localhost:3000/api/projects/${state.activeProjectId}/feedback`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ actor: currentUser, content, target_user: target, category })
+            body: JSON.stringify({ actor: currentUser, content: fullContent, target_user: target || null, category: 'discussion' })
         });
         const json = await resp.json();
-        if (!json.success) return alert(json.message || '发布失败');
-        clearDrafts(['collab-title', 'collab-body', 'collab-category', 'collab-target']);
-        const categoryField = document.getElementById('collab-category');
-        if (categoryField) categoryField.value = 'discussion';
-        await loadProjectDetail(state.activeProjectId);
-    } catch (err) {
-        alert('网络错误，发布失败');
-    }
+        if (json.success) {
+            document.getElementById('collab-title').value = '';
+            document.getElementById('collab-body').value = '';
+            state._collabLabel = null;
+            loadProjectDetail(state.activeProjectId);
+        } else alert(json.message || 'Failed');
+    } catch (_) { alert('Network error'); }
 }
 
-async function updateFeedback(feedbackId, status) {
-    const resolutionNote = prompt(status === 'resolved' ? '输入处理说明（可选）' : '输入复开说明（可选）') || '';
-
+async function resolveFeedback(fid) {
+    if (!state.activeProjectId) return;
     try {
-        const resp = await fetch(`http://localhost:3000/api/projects/${state.activeProjectId}/feedback/${feedbackId}`, {
+        const resp = await fetch(`http://localhost:3000/api/projects/${state.activeProjectId}/feedback/${fid}`, {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ actor: currentUser, status, resolution_note: resolutionNote })
+            body: JSON.stringify({ actor: currentUser, status: 'resolved' })
         });
         const json = await resp.json();
-        if (!json.success) return alert(json.message || '更新失败');
-        await loadProjectDetail(state.activeProjectId);
-    } catch (err) {
-        alert('网络错误，更新失败');
-    }
-}
-
-async function deleteFeedback(feedbackId) {
-    if (!confirm('确定撤回/删除该反馈吗？')) return;
-
-    try {
-        const resp = await fetch(`http://localhost:3000/api/projects/${state.activeProjectId}/feedback/${feedbackId}`, {
-            method: 'DELETE',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ actor: currentUser })
-        });
-        const json = await resp.json();
-        if (!json.success) return alert(json.message || '操作失败');
-        await loadProjectDetail(state.activeProjectId);
-    } catch (err) {
-        alert('网络错误，操作失败');
-    }
+        if (json.success) loadProjectDetail(state.activeProjectId);
+        else alert(json.message || 'Failed');
+    } catch (_) { alert('Network error'); }
 }
 
 async function submitCheckin() {
-    const note = (document.getElementById('checkin-note')?.value || '').trim();
-    const completion = Number(document.getElementById('checkin-completion')?.value);
-
+    if (!state.activeProjectId) return;
+    const note = document.getElementById('checkin-note')?.value?.trim();
+    if (!note) return alert('Note required');
     try {
         const resp = await fetch(`http://localhost:3000/api/projects/${state.activeProjectId}/checkins`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ user: currentUser, progress_note: note, task_completion: completion })
+            body: JSON.stringify({ user: currentUser, progress_note: note })
         });
         const json = await resp.json();
-        if (!json.success) return alert(json.message || '打卡失败');
-        clearDrafts(['checkin-note', 'checkin-completion']);
-        await loadProjectDetail(state.activeProjectId);
-    } catch (err) {
-        alert('网络错误，打卡失败');
-    }
+        if (json.success) {
+            document.getElementById('checkin-note').value = '';
+            loadProjectDetail(state.activeProjectId);
+        } else alert(json.message || 'Failed');
+    } catch (_) { alert('Network error'); }
 }
 
-async function deleteCheckin(checkinId) {
-    if (!confirm('确定删除该打卡记录吗？')) return;
-
-    try {
-        const resp = await fetch(`http://localhost:3000/api/projects/${state.activeProjectId}/checkins/${checkinId}`, {
-            method: 'DELETE',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ actor: currentUser })
-        });
-        const json = await resp.json();
-        if (!json.success) return alert(json.message || '删除失败');
-        await loadProjectDetail(state.activeProjectId);
-    } catch (err) {
-        alert('网络错误，删除失败');
-    }
-}
-
-async function submitProjectRating() {
-    const reviewee = document.getElementById('rating-reviewee')?.value;
-    const score = Number(document.getElementById('rating-score')?.value || 5);
-    const comment = (document.getElementById('rating-comment')?.value || '').trim();
-    if (!reviewee) return alert('请选择队友');
-
+async function submitRating() {
+    if (!state.activeProjectId) return;
+    const reviewee = document.getElementById('rating-reviewee')?.value?.trim();
+    const comment = document.getElementById('rating-comment')?.value?.trim();
+    const score = window._ratingValue || 0;
+    if (!reviewee) return alert('Select a member to review');
+    if (!score) return alert('Select a star rating');
     try {
         const resp = await fetch(`http://localhost:3000/api/projects/${state.activeProjectId}/ratings`, {
             method: 'POST',
@@ -1230,20 +1054,77 @@ async function submitProjectRating() {
             body: JSON.stringify({ reviewer: currentUser, reviewee, score, comment })
         });
         const json = await resp.json();
-        if (!json.success) return alert(json.message || '提交失败');
-        clearDrafts(['rating-reviewee', 'rating-score', 'rating-comment']);
-        await loadProjectDetail(state.activeProjectId);
-    } catch (err) {
-        alert('网络错误，提交失败');
+        if (json.success) {
+            document.getElementById('rating-comment').value = '';
+            window._ratingValue = 0;
+            document.getElementById('rating-stars').innerHTML = starRatingHTML(0);
+            loadProjectDetail(state.activeProjectId);
+        } else alert(json.message || 'Failed');
+    } catch (_) { alert('Network error'); }
+}
+
+/* ── Exit Request (成员申请退出) ── */
+function openExitRequest() {
+    document.getElementById('exit-request-modal').style.display = 'flex';
+}
+function closeExitRequest() {
+    document.getElementById('exit-request-modal').style.display = 'none';
+}
+async function submitExitRequest() {
+    const reason = document.getElementById('exit-reason')?.value?.trim() || '';
+    try {
+        const resp = await fetch('http://localhost:3000/api/projects/' + state.activeProjectId + '/exit-requests', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ user: currentUser, reason })
+        });
+        const json = await resp.json();
+        if (json.success) {
+            closeExitRequest();
+            alert(json.message);
+            loadProjectDetail(state.activeProjectId);
+        } else alert(json.message || 'Failed');
+    } catch (_) { alert('Network error'); }
+}
+async function loadExitRequests() {
+    const container = document.getElementById('exit-requests-section');
+    if (!container) return;
+    try {
+        const resp = await fetch('http://localhost:3000/api/projects/' + state.activeProjectId + '/exit-requests');
+        const json = await resp.json();
+        if (!json.success || !json.data.length) { container.innerHTML = ''; return; }
+        const pending = json.data.filter(r => r.status === 'pending');
+        if (!pending.length) { container.innerHTML = ''; return; }
+        var items = '';
+        for (var i = 0; i < pending.length; i++) {
+            var r = pending[i];
+            items += '<div style="display:flex;align-items:center;gap:12px;padding:8px 0;border-bottom:1px solid rgba(194,198,214,.15);">';
+            items += '<strong>' + escapeHtml(r.user_name) + '</strong>';
+            items += '<span style="font-size:12px;color:var(--on-surface-variant);">' + escapeHtml(r.reason || '') + '</span>';
+            items += '<button class="cm-button" style="font-size:11px;min-height:24px;margin-left:auto;" onclick="approveExit(' + r.id + ',&quot;approve&quot;)">Approve</button>';
+            items += '<button class="cm-button ghost" style="font-size:11px;min-height:24px;color:var(--error);" onclick="approveExit(' + r.id + ',&quot;reject&quot;)">Reject</button>';
+            items += '</div>';
+        }
+        container.innerHTML = '<div class="cm-glass-card"><h3 style="margin:0 0 12px;font-size:16px;font-weight:800;">Pending Exit Requests</h3>' + items + '</div>';
+    } catch (_) {}
+}
+async function approveExit(requestId, action) {
+    let rating = 3;
+    if (action === 'approve') {
+        const r = prompt('评价该成员 (1-5):', '3');
+        rating = Math.min(5, Math.max(1, parseInt(r) || 3));
+        if (!confirm('确认批准退出？评价: ' + rating + '/5')) return;
+    } else {
+        if (!confirm('Reject exit request?')) return;
     }
-}
-
-async function refreshAll() {
-    await loadProjects();
-}
-
-if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', initializeProjectCenter);
-} else {
-    initializeProjectCenter();
+    try {
+        const resp = await fetch('http://localhost:3000/api/projects/' + state.activeProjectId + '/exit-requests/' + requestId, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ actor: currentUser, action, rating: rating })
+        });
+        const json = await resp.json();
+        if (json.success) { alert(json.message); loadProjectDetail(state.activeProjectId); }
+        else alert(json.message || 'Failed');
+    } catch (_) { alert('Network error'); }
 }
