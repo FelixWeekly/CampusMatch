@@ -758,6 +758,19 @@ function safeJsonParse(raw, fallback) {
     }
 }
 
+function getUserAvatarMap(userNames) {
+    const uniqueNames = Array.from(new Set((userNames || []).map((name) => String(name || '').trim()).filter(Boolean)));
+    const avatarMap = new Map();
+    if (!uniqueNames.length) return avatarMap;
+
+    const placeholders = uniqueNames.map(() => '?').join(', ');
+    const rows = db.prepare(`SELECT name, avatar FROM users WHERE name IN (${placeholders})`).all(...uniqueNames);
+    rows.forEach((row) => {
+        avatarMap.set(row.name, row.avatar || null);
+    });
+    return avatarMap;
+}
+
 function extractJsonPayload(text) {
     const raw = String(text || '').trim();
     if (!raw) return null;
@@ -1980,7 +1993,7 @@ app.get('/api/profile/:username', (req, res) => {
     const username = req.params.username;
     try {
         const user = db.prepare(`
-            SELECT name, email, department, grade, bio, portfolio, campus
+            SELECT name, email, department, grade, bio, portfolio, campus, avatar
             FROM users
             WHERE name = ?
         `).get(username);
@@ -2290,10 +2303,11 @@ app.get('/api/projects/:id/detail', (req, res) => {
         const canManage = isMember && isProjectLeader(projectId, currentUser);
 
         const members = db.prepare(`
-            SELECT user_name, role, joined_at
-            FROM team_members
-            WHERE project_id = ?
-            ORDER BY CASE role WHEN 'leader' THEN 1 WHEN 'core_member' THEN 2 ELSE 3 END, joined_at ASC
+            SELECT tm.user_name, tm.role, tm.joined_at, u.avatar AS avatar
+            FROM team_members tm
+            LEFT JOIN users u ON u.name = tm.user_name
+            WHERE tm.project_id = ?
+            ORDER BY CASE tm.role WHEN 'leader' THEN 1 WHEN 'core_member' THEN 2 ELSE 3 END, tm.joined_at ASC
         `).all(projectId);
         const milestones = db.prepare('SELECT * FROM milestones WHERE project_id = ? ORDER BY created_at ASC').all(projectId);
         const checkins = db.prepare('SELECT * FROM checkins WHERE project_id = ? ORDER BY created_at DESC LIMIT 50').all(projectId);
@@ -3500,9 +3514,10 @@ app.get('/api/community/posts', (req, res) => {
 
     try {
         const rows = db.prepare(`
-            SELECT cp.*, cc.name AS circle_name
+            SELECT cp.*, cc.name AS circle_name, u.avatar AS author_avatar
             FROM community_posts cp
             LEFT JOIN community_circles cc ON cc.id = cp.circle_id
+            LEFT JOIN users u ON u.name = cp.author
             ORDER BY cp.created_at DESC
             LIMIT ?
         `).all(limit);
@@ -3859,8 +3874,14 @@ app.get('/api/message-threads', (req, res) => {
                 last_message: latest?.message || '',
                 last_sender: latest?.sender || '',
                 unread_count: unread?.count || 0,
+                peer_avatar: null,
                 type: 'user'
             };
+        });
+
+        const peerAvatarMap = getUserAvatarMap(personalThreads.map((thread) => thread.peer));
+        personalThreads.forEach((thread) => {
+            thread.peer_avatar = peerAvatarMap.get(thread.peer) || null;
         });
 
         // Project group threads — bound to project membership, not message existence
@@ -3885,6 +3906,7 @@ app.get('/api/message-threads', (req, res) => {
                 last_message: latest?.message || 'Project channel ready',
                 last_sender: latest?.sender || '',
                 unread_count: 0,
+                peer_avatar: null,
                 type: 'project'
             };
         });
@@ -3915,16 +3937,20 @@ app.get('/api/conversation', (req, res) => {
         if (String(withUser).startsWith('project:')) {
             // Project group chat: get all messages for this project
             messages = db.prepare(`
-                SELECT * FROM messages
+                SELECT m.*, u.avatar AS sender_avatar
+                FROM messages m
+                LEFT JOIN users u ON u.name = m.sender
                 WHERE recipient = ?
-                ORDER BY created_at ASC
+                ORDER BY m.created_at ASC
             `).all(withUser);
         } else {
             // 1-on-1 chat
             messages = db.prepare(`
-                SELECT * FROM messages
+                SELECT m.*, u.avatar AS sender_avatar
+                FROM messages m
+                LEFT JOIN users u ON u.name = m.sender
                 WHERE (sender = ? AND recipient = ?) OR (sender = ? AND recipient = ?)
-                ORDER BY created_at ASC
+                ORDER BY m.created_at ASC
             `).all(user, withUser, withUser, user);
         }
         res.json({ success: true, data: messages });

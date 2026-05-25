@@ -104,10 +104,15 @@ function renderThreads() {
         const isProject = thread.type === 'project';
         const icon = isProject ? 'account_tree' : '';
         const avatarLetter = isProject ? 'P' : avatarInitial(displayName);
+        const avatarNode = isProject
+            ? `<span class="cm-avatar-sm" data-user="${encodeURIComponent(thread.peer || '')}">${avatarLetter}</span>`
+            : (thread.peer_avatar
+                ? `<span class="cm-avatar-sm" data-avatar-loaded="1"><img data-avatar-image="1" alt="" referrerpolicy="no-referrer" src="${escapeHtml(thread.peer_avatar)}"></span>`
+                : `<span class="cm-avatar-sm" data-user="${encodeURIComponent(thread.peer || '')}">${avatarLetter}</span>`);
 
         return `
             <button class="thread-item${activeClass}" type="button" onclick="openConversation('${escapeJs(thread.peer)}')">
-                <span class="cm-avatar-sm" data-user="${encodeURIComponent(thread.peer || '')}">${avatarLetter}</span>
+                ${avatarNode}
                 <span class="thread-main">
                     <strong>${escapeHtml(displayName)}</strong>
                     <span>${escapeHtml(thread.last_message || 'No message preview')}</span>
@@ -126,14 +131,22 @@ async function openConversation(peer) {
     const displayName = isProject
         ? (messageThreads.find((t) => t.peer === peer)?.peer_label || peer)
         : peer;
+    const peerThread = messageThreads.find((t) => t.peer === peer);
+    const peerAvatar = !isProject && peerThread ? peerThread.peer_avatar : '';
 
     document.getElementById('conversation-title').textContent = displayName;
     const avContainer = document.getElementById('conversation-avatar');
     avContainer.className = 'cm-avatar-sm';
-    avContainer.setAttribute('data-user', encodeURIComponent(peer || ''));
-    avContainer.textContent = isProject ? 'P' : avatarInitial(peer);
-    initAvatars();
-    avContainer.textContent = isProject ? 'P' : avatarInitial(peer);
+    if (peerAvatar) {
+        avContainer.removeAttribute('data-user');
+        avContainer.setAttribute('data-avatar-loaded', '1');
+        avContainer.innerHTML = '<img data-avatar-image="1" alt="" referrerpolicy="no-referrer" src="' + escapeHtml(peerAvatar) + '">';
+    } else {
+        avContainer.removeAttribute('data-avatar-loaded');
+        avContainer.setAttribute('data-user', encodeURIComponent(peer || ''));
+        avContainer.textContent = isProject ? 'P' : avatarInitial(peer);
+        initAvatars();
+    }
     document.getElementById('conversation-status').textContent = isProject ? 'Project channel' : 'Direct message';
 
     const history = document.getElementById('conversation-history');
@@ -163,9 +176,12 @@ function renderConversation(messages) {
 
     history.innerHTML = messages.map((message) => {
         const mine = message.sender === currentUser;
+        const avatarNode = mine ? '' : (message.sender_avatar
+            ? '<span class="cm-avatar-sm" data-avatar-loaded="1"><img data-avatar-image="1" alt="" referrerpolicy="no-referrer" src="' + escapeHtml(message.sender_avatar) + '"></span>'
+            : '<span class="cm-avatar-sm" data-user="' + encodeURIComponent(message.sender || '') + '">' + avatarInitial(message.sender) + '</span>');
         return [
             '<div class="message-row ' + (mine ? 'mine' : '') + '">',
-            mine ? '' : '<span class="cm-avatar-sm" data-user="' + encodeURIComponent(message.sender || '') + '">' + avatarInitial(message.sender) + '</span>',
+            avatarNode,
             '<div>',
             '<div class="message-meta">' + escapeHtml(message.sender) + ' · ' + formatTime(message.created_at) + '</div>',
             '<div class="message-bubble">' + escapeHtml(message.message) + '</div>',
@@ -203,15 +219,48 @@ function avatarInitial(name) {
     return String(name || 'U').trim().slice(0, 1).toUpperCase();
 }
 
+function decodeAvatarUser(value) {
+    const raw = String(value || '').trim();
+    if (!raw) return '';
+    try {
+        return decodeURIComponent(raw);
+    } catch (_) {
+        return raw;
+    }
+}
+
+function clearAvatarFallbackText(el) {
+    for (var node = el.firstChild; node; node = node.nextSibling) {
+        if (node.nodeType === 3) node.nodeValue = '';
+    }
+}
+
 function initAvatars() {
     var els = document.querySelectorAll('.cm-avatar-sm[data-user]');
     for (var i = 0; i < els.length; i++) {
         var el = els[i];
-        var user = el.getAttribute('data-user');
-        if (!user) continue;
+        if (el.getAttribute('data-avatar-loading') === '1' || el.getAttribute('data-avatar-loaded') === '1') continue;
+        var user = decodeAvatarUser(el.getAttribute('data-user'));
+        if (!user || user.indexOf('project:') === 0) continue;
+        if (el.querySelector('img[data-avatar-image]')) continue;
         var img = document.createElement('img');
-        img.src = 'http://localhost:3000/api/users/avatar/' + user + '/raw';
-        img.onerror = function() { this.remove(); };
+        img.setAttribute('data-avatar-image', '1');
+        img.alt = '';
+        img.referrerPolicy = 'no-referrer';
+        img.onload = function() {
+            var host = this.parentElement;
+            if (!host) return;
+            host.setAttribute('data-avatar-loaded', '1');
+            host.removeAttribute('data-avatar-loading');
+            clearAvatarFallbackText(host);
+        };
+        img.onerror = function() {
+            var host = this.parentElement;
+            if (host) host.removeAttribute('data-avatar-loading');
+            this.remove();
+        };
+        el.setAttribute('data-avatar-loading', '1');
+        img.src = 'http://localhost:3000/api/users/avatar/' + encodeURIComponent(user) + '/raw';
         el.insertBefore(img, el.firstChild);
     }
 }

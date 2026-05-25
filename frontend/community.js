@@ -23,15 +23,48 @@ function communityEscape(value) {
         .replace(/'/g, '&#39;');
 }
 
+function decodeAvatarUser(value) {
+    const raw = String(value || '').trim();
+    if (!raw) return '';
+    try {
+        return decodeURIComponent(raw);
+    } catch (_) {
+        return raw;
+    }
+}
+
+function clearAvatarFallbackText(el) {
+    for (var node = el.firstChild; node; node = node.nextSibling) {
+        if (node.nodeType === 3) node.nodeValue = '';
+    }
+}
+
 function initAvatars() {
     var els = document.querySelectorAll('.cm-avatar-sm[data-user]');
     for (var i = 0; i < els.length; i++) {
         var el = els[i];
-        var user = el.getAttribute('data-user');
-        if (!user) continue;
+        if (el.getAttribute('data-avatar-loading') === '1' || el.getAttribute('data-avatar-loaded') === '1') continue;
+        var user = decodeAvatarUser(el.getAttribute('data-user'));
+        if (!user || user.indexOf('project:') === 0) continue;
+        if (el.querySelector('img[data-avatar-image]')) continue;
         var img = document.createElement('img');
-        img.src = 'http://localhost:3000/api/users/avatar/' + user + '/raw';
-        img.onerror = function() { this.remove(); };
+        img.setAttribute('data-avatar-image', '1');
+        img.alt = '';
+        img.referrerPolicy = 'no-referrer';
+        img.onload = function() {
+            var host = this.parentElement;
+            if (!host) return;
+            host.setAttribute('data-avatar-loaded', '1');
+            host.removeAttribute('data-avatar-loading');
+            clearAvatarFallbackText(host);
+        };
+        img.onerror = function() {
+            var host = this.parentElement;
+            if (host) host.removeAttribute('data-avatar-loading');
+            this.remove();
+        };
+        el.setAttribute('data-avatar-loading', '1');
+        img.src = 'http://localhost:3000/api/users/avatar/' + encodeURIComponent(user) + '/raw';
         el.insertBefore(img, el.firstChild);
     }
 }
@@ -156,6 +189,9 @@ async function loadCommunityPosts() {
             const initials = (post.author || '?').charAt(0).toUpperCase();
             const liked = post.liked_by_me ? ' liked' : '';
             const isOwn = post.author === curUser;
+            const avatarNode = post.author_avatar
+                ? `<span class="cm-avatar-sm" data-avatar-loaded="1"><img data-avatar-image="1" alt="" referrerpolicy="no-referrer" src="${communityEscape(post.author_avatar)}"></span>`
+                : `<span class="cm-avatar-sm" data-user="${encodeURIComponent(post.author || '')}">${initials}</span>`;
             const projectEmbed = post.project_id
                 ? `<div class="cm-feed-card-project" onclick="window.location.href='team_management.html?project=${post.project_id}'">
                     <span class="material-symbols-outlined" style="color:var(--secondary);">account_tree</span>
@@ -167,7 +203,7 @@ async function loadCommunityPosts() {
                 <article class="cm-feed-card">
                     <div class="cm-feed-card-header">
                         <div class="cm-feed-card-author">
-                            <span class="cm-avatar-sm" data-user="${encodeURIComponent(post.author || '')}">${initials}</span>
+                            ${avatarNode}
                             <div class="cm-feed-card-meta">
                                 <a href="profile.html?user=${encodeURIComponent(post.author || '')}" style="color:var(--on-surface);text-decoration:none;font-weight:700;">${communityEscape(post.author)}</a>
                                 <span class="cm-feed-card-info">

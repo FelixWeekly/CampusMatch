@@ -240,12 +240,45 @@ function initAvatars() {
     var els = document.querySelectorAll('.cm-avatar-sm[data-user]');
     for (var i = 0; i < els.length; i++) {
         var el = els[i];
-        var user = el.getAttribute('data-user');
-        if (!user) continue;
+        if (el.getAttribute('data-avatar-loading') === '1' || el.getAttribute('data-avatar-loaded') === '1') continue;
+        var user = decodeAvatarUser(el.getAttribute('data-user'));
+        if (!user || user.indexOf('project:') === 0) continue;
+        if (el.querySelector('img[data-avatar-image]')) continue;
         var img = document.createElement('img');
-        img.src = 'http://localhost:3000/api/users/avatar/' + user + '/raw';
-        img.onerror = function() { this.remove(); };
+        img.setAttribute('data-avatar-image', '1');
+        img.alt = '';
+        img.referrerPolicy = 'no-referrer';
+        img.onload = function() {
+            var host = this.parentElement;
+            if (!host) return;
+            host.setAttribute('data-avatar-loaded', '1');
+            host.removeAttribute('data-avatar-loading');
+            clearAvatarFallbackText(host);
+        };
+        img.onerror = function() {
+            var host = this.parentElement;
+            if (host) host.removeAttribute('data-avatar-loading');
+            this.remove();
+        };
+        el.setAttribute('data-avatar-loading', '1');
+        img.src = 'http://localhost:3000/api/users/avatar/' + encodeURIComponent(user) + '/raw';
         el.insertBefore(img, el.firstChild);
+    }
+}
+
+function decodeAvatarUser(value) {
+    const raw = String(value || '').trim();
+    if (!raw) return '';
+    try {
+        return decodeURIComponent(raw);
+    } catch (_) {
+        return raw;
+    }
+}
+
+function clearAvatarFallbackText(el) {
+    for (var node = el.firstChild; node; node = node.nextSibling) {
+        if (node.nodeType === 3) node.nodeValue = '';
     }
 }
 
@@ -641,7 +674,9 @@ function renderMembers(detail) {
             ${leader ? `
             <div class="member-card" style="border:1px solid rgba(0,88,190,0.2);background:var(--primary-container);">
                 <div style="display:flex;align-items:center;gap:12px;">
-                    <span class="cm-avatar-sm" data-user="${encodeURIComponent(leader.user_name || '')}" style="background:var(--primary);color:var(--on-primary);">${(leader.user_name||'?')[0].toUpperCase()}</span>
+                    ${leader.avatar
+                        ? `<span class="cm-avatar-sm" data-avatar-loaded="1" style="background:var(--primary);color:var(--on-primary);"><img data-avatar-image="1" alt="" referrerpolicy="no-referrer" src="${escapeHtml(leader.avatar)}"></span>`
+                        : `<span class="cm-avatar-sm" data-user="${encodeURIComponent(leader.user_name || '')}" style="background:var(--primary);color:var(--on-primary);">${(leader.user_name||'?')[0].toUpperCase()}</span>`}
                     <div>
                         <a href="profile.html?user=${encodeURIComponent(leader.user_name || '')}" style="color:var(--on-primary-container);text-decoration:none;font-weight:800;">${escapeHtml(leader.user_name)}</a>
                         <span class="cm-chip" style="margin-left:8px;">Leader</span>
@@ -660,7 +695,9 @@ function renderMembers(detail) {
                 }
                 return ['<div class="member-card">',
                     '<div style="display:flex;align-items:center;gap:12px;">',
-                    '<span class="cm-avatar-sm" data-user="' + encodeURIComponent(m.user_name || '') + '">' + (m.user_name||'?')[0].toUpperCase() + '</span>',
+                    m.avatar
+                        ? '<span class="cm-avatar-sm" data-avatar-loaded="1"><img data-avatar-image="1" alt="" referrerpolicy="no-referrer" src="' + escapeHtml(m.avatar) + '"></span>'
+                        : '<span class="cm-avatar-sm" data-user="' + encodeURIComponent(m.user_name || '') + '">' + (m.user_name||'?')[0].toUpperCase() + '</span>',
                     '<div><a href="profile.html?user=' + encodeURIComponent(m.user_name || '') + '" style="color:var(--on-surface);text-decoration:none;font-weight:700;">' + nameEscaped + '</a>',
                     '<span style="font-size:12px;color:var(--outline);margin-left:8px;">' + (m.role === 'core_member' ? 'Core Member' : 'Member') + '</span></div>',
                     buttons,

@@ -49,8 +49,18 @@ async function fetchProfileData() {
             // 默认头像：名字首字母
             const avatarIcon = document.getElementById('avatar-icon');
             if (avatarIcon) avatarIcon.textContent = (u.name || '?').charAt(0).toUpperCase();
-            // 加载头像
-            loadUserAvatar(u.name);
+            // 优先使用资料接口返回的头像
+            if (u.avatar) {
+                const img = document.getElementById('avatar-img');
+                if (img) {
+                    img.src = u.avatar;
+                    img.style.display = '';
+                }
+                if (avatarIcon) avatarIcon.style.display = 'none';
+            } else {
+                // 兼容旧数据：再走一次头像接口
+                loadUserAvatar(u.name);
+            }
             document.getElementById('display-dept-grade').innerText = `${u.department} · ${u.grade}`;
             document.getElementById('display-campus-hours').innerText = `校区: ${u.campus || '未设置'}`;
             document.getElementById('display-bio').innerText = u.bio;
