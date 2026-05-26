@@ -403,9 +403,29 @@ async function resetPassword() {
     }
 }
 
+const COVER_KEY = 'campusmatch-cover-mode'; // 'left' | 'full'
+
+function toggleCoverMode(e) {
+    e.preventDefault();
+    const shell = document.querySelector('.auth-shell');
+    if (!shell) return;
+    const current = localStorage.getItem(COVER_KEY) || 'left';
+    const next = current === 'left' ? 'full' : 'left';
+    shell.classList.toggle('full-cover', next === 'full');
+    localStorage.setItem(COVER_KEY, next);
+}
+
+function initCoverMode() {
+    var mode = localStorage.getItem(COVER_KEY) || 'left';
+    var shell = document.querySelector('.auth-shell');
+    if (!shell) return;
+    if (mode === 'full') shell.classList.add('full-cover');
+}
+
 function initializeAuthPage() {
     applyAuthLanguage(currentAuthLanguage);
     switchForm(currentAuthForm);
+    initCoverMode();
 }
 
 if (document.readyState === 'loading') {
