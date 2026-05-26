@@ -1,13 +1,23 @@
+function campusMatchLanguage() {
+    return window.getCampusMatchLanguage ? window.getCampusMatchLanguage() : ((localStorage.getItem('campusmatch-language') || 'zh') === 'en' ? 'en' : 'zh');
+}
+
+function dashboardCopy(zh, en) {
+    return campusMatchLanguage() === 'en' ? en : zh;
+}
+
 window.onload = function() {
     const currentUser = localStorage.getItem('currentUser');
 
     if (!currentUser) {
-        alert('请先登录！');
+        alert(dashboardCopy('请先登录！', 'Please log in first.'));
         window.location.href = 'index.html';
         return;
     }
 
-    document.getElementById('welcome-text').innerText = `👋 欢迎, ${currentUser}!`;
+    document.getElementById('welcome-text').innerText = campusMatchLanguage() === 'en'
+        ? `👋 Welcome, ${currentUser}!`
+        : `👋 欢迎, ${currentUser}!`;
     updateManagementEntryVisibility(false);
     renderSimpleHomeFlow(0);
     renderLabelPickers();
@@ -47,20 +57,20 @@ async function createPost() {
     const author = localStorage.getItem('currentUser');
     
     if (title === '' || content === '') {
-        alert('标题和内容不能为空！');
+        alert(dashboardCopy('标题和内容不能为空！', 'Title and content are required.'));
         return;
     }
     if (!selectedPostLabel) {
-        alert('请选择一个标签');
+        alert(dashboardCopy('请选择一个标签', 'Please choose a label.'));
         return;
     }
     if (selectedPostLabel === '自定义') {
         if (!customLabel) {
-            alert('请输入自定义标签');
+            alert(dashboardCopy('请输入自定义标签', 'Please enter a custom label.'));
             return;
         }
         if (customLabel.length > 12) {
-            alert('自定义标签最多 12 个字符');
+            alert(dashboardCopy('自定义标签最多 12 个字符', 'Custom labels can be up to 12 characters.'));
             return;
         }
     }
@@ -71,7 +81,7 @@ async function createPost() {
     hasCompensation = document.getElementById('post-compensation').checked;
     amount = document.getElementById('post-amount').value.trim();
     if (hasCompensation && amount === '') {
-        alert('请输入报酬金额！');
+        alert(dashboardCopy('请输入报酬金额！', 'Please enter the compensation amount.'));
         return;
     }
     try {
@@ -93,7 +103,7 @@ async function createPost() {
         const data = await response.json();
 
         if (data.success) {
-            alert('发布成功！');
+            alert(dashboardCopy('发布成功！', 'Posted successfully!'));
             document.getElementById('post-title').value = '';
             document.getElementById('post-content').value = '';
             document.getElementById('post-compensation').checked = false;
@@ -111,7 +121,7 @@ async function createPost() {
             loadRecommendations();
         }
     } catch (error) {
-        alert('网络错误，发布失败！');
+        alert(dashboardCopy('网络错误，发布失败！', 'Network error. Failed to post.'));
     }
 }
 
@@ -345,6 +355,7 @@ function togglePostsSection() {
     if (postsCollapsed) {
         body.style.transition = 'max-height 0.24s cubic-bezier(0.4, 0, 1, 1), opacity 0.18s ease-out, transform 0.18s ease-out';
         body.style.maxHeight = `${body.scrollHeight}px`;
+        body.style.overflow = 'hidden';
         // Force reflow to ensure transition starts from current height.
         void body.offsetHeight;
         body.classList.add('collapsed');
@@ -352,18 +363,20 @@ function togglePostsSection() {
     } else {
         body.style.transition = 'max-height 0.46s cubic-bezier(0.22, 1, 0.36, 1), opacity 0.26s ease, transform 0.26s ease';
         body.classList.remove('collapsed');
+        body.style.overflow = 'hidden';
         body.style.maxHeight = `${body.scrollHeight}px`;
         const onEnd = function(e) {
             if (e.propertyName === 'max-height' && !postsCollapsed) {
                 body.style.maxHeight = 'none';
                 body.style.transition = '';
+                body.style.overflow = '';
                 body.removeEventListener('transitionend', onEnd);
             }
         };
         body.addEventListener('transitionend', onEnd);
     }
 
-    btn.innerText = postsCollapsed ? '展开帖子列表' : '收起帖子列表';
+    btn.innerText = postsCollapsed ? dashboardCopy('展开帖子列表', 'Expand list') : dashboardCopy('收起帖子列表', 'Collapse list');
 }
 
 function togglePostsExpand() {
@@ -405,7 +418,7 @@ function renderPosts() {
     postsContainer.innerHTML = '';
 
     if (!allPosts || allPosts.length === 0) {
-        postsContainer.innerHTML = '<p style="text-align:center; color:#9ca3af; padding: 40px;">目前还没有人发帖，快来抢沙发吧！</p>';
+        postsContainer.innerHTML = `<p style="text-align:center; color:#9ca3af; padding: 40px;">${dashboardCopy('目前还没有人发帖，快来抢沙发吧！', 'No posts yet. Be the first!')}</p>`;
         if (moreWrap) moreWrap.innerHTML = '';
         return;
     }
@@ -413,7 +426,7 @@ function renderPosts() {
     const filtered = applyFilters(allPosts);
 
     if (filtered.length === 0) {
-        postsContainer.innerHTML = '<p style="text-align:center; color:#9ca3af; padding: 40px;">未找到匹配的帖子。</p>';
+        postsContainer.innerHTML = `<p style="text-align:center; color:#9ca3af; padding: 40px;">${dashboardCopy('未找到匹配的帖子。', 'No matching posts found.')}</p>`;
         if (moreWrap) moreWrap.innerHTML = '';
         return;
     }
@@ -434,29 +447,29 @@ function renderPosts() {
         let actionBtn = '';
         if (isMyPost) {
             actionBtn = `<div style="display:flex; align-items:center; gap: 12px; white-space: nowrap">
-                         <span style="color: #10b981; font-weight: bold; font-size: 14px;">(这是你的帖子)</span>
-                         <button onclick="deletePost(${post.id})" class="btn-delete">🗑️ 删除</button>
+                         <span style="color: #10b981; font-weight: bold; font-size: 14px;">${dashboardCopy('(这是你的帖子)', '(Your post)')}</span>
+                         <button onclick="deletePost(${post.id})" class="btn-delete">🗑️ ${dashboardCopy('删除', 'Delete')}</button>
                        </div>`;
         } else if (isSkillPost) {
             // 提供技能类型：根据是否已联系过显示不同按钮
             if (post.has_applied) {
                 // 已经联系过了，显示继续聊天按钮
-                actionBtn = `<button onclick="openChat('${post.author}', '${post.title.replace(/'/g, "\\'")}')" class="btn-apply">💬 继续聊天</button>`;
+                actionBtn = `<button onclick="openChat('${post.author}', '${post.title.replace(/'/g, "\\'")}')" class="btn-apply">💬 ${dashboardCopy('继续聊天', 'Continue chat')}</button>`;
             } else {
                 // 还没联系过，显示与我联系按钮
-                actionBtn = `<button onclick="contactSkillProvider(${post.id})" class="btn-apply">💬 与我联系</button>`;
+                actionBtn = `<button onclick="contactSkillProvider(${post.id})" class="btn-apply">💬 ${dashboardCopy('与我联系', 'Contact me')}</button>`;
             }
         } else if (post.my_application_status === 'accepted') {
-            actionBtn = `<button disabled class="btn-applied" style="color:#065f46; background:#d1fae5;">✅ 已通过入队</button>`;
+            actionBtn = `<button disabled class="btn-applied" style="color:#065f46; background:#d1fae5;">✅ ${dashboardCopy('已通过入队', 'Accepted')}</button>`;
         } else if (post.my_application_status === 'rejected') {
-            actionBtn = `<button disabled class="btn-applied" style="color:#991b1b; background:#fee2e2;">❌ 已被拒绝</button>`;
+            actionBtn = `<button disabled class="btn-applied" style="color:#991b1b; background:#fee2e2;">❌ ${dashboardCopy('已被拒绝', 'Rejected')}</button>`;
         } else if (post.my_application_status === 'pending') {
-            actionBtn = `<button disabled class="btn-applied" style="color:#92400e; background:#fef3c7;">🕒 审批中</button>`;
+            actionBtn = `<button disabled class="btn-applied" style="color:#92400e; background:#fef3c7;">🕒 ${dashboardCopy('审批中', 'Pending')}</button>`;
         } else if (post.project_status && post.project_status !== 'recruiting') {
-            actionBtn = `<button disabled class="btn-applied">⛔ 招募已结束</button>`;
+            actionBtn = `<button disabled class="btn-applied">⛔ ${dashboardCopy('招募已结束', 'Recruitment closed')}</button>`;
         } else {
             // 还没报名
-            actionBtn = `<button onclick="applyForPost(${post.id})" class="btn-apply">✋ 我要报名</button>`;
+            actionBtn = `<button onclick="applyForPost(${post.id})" class="btn-apply">✋ ${dashboardCopy('我要报名', 'Apply')}</button>`;
         }
 
         // 构建有报酬标签（仅对"寻人组队"显示）
@@ -477,13 +490,13 @@ function renderPosts() {
             let heatColor, heatLevel;
             if (post.popularity > 50) {
                 heatColor = '#ef4444';
-                heatLevel = '🔥 HOT';
+                heatLevel = dashboardCopy('🔥 热门', '🔥 Hot');
             } else if (post.popularity > 20) {
                 heatColor = '#f59e0b';
-                heatLevel = '🌡️ WARM';
+                heatLevel = dashboardCopy('🌡️ 升温', '🌡️ Rising');
             } else {
                 heatColor = '#8b5cf6';
-                heatLevel = '👁️ NEW';
+                heatLevel = dashboardCopy('👁️ 新帖', '👁️ New');
             }
             
             popularityBadge = `<span style="font-size: 13px; font-weight: bold; color: ${heatColor};">${heatLevel} (${post.popularity})</span>`;
@@ -527,8 +540,9 @@ function renderPosts() {
                 <div style="display: flex; justify-content: space-between; align-items: center; gap: 16px; padding-top: 16px; border-top: 1px solid #f3f4f6; flex-wrap: wrap;">
                     <div style="display: flex; align-items: center; gap: 12px; font-size: 14px; color: #6b7280;">
                         <span>发布者: <a href="profile.html?user=${encodeURIComponent(post.author || '')}" style="color: #3b82f6; text-decoration: none; font-weight: bold;">${post.author}</a></span>
-                        <span style="color: #9ca3af;">|</span>
-                        <span style="color: #9ca3af;">${post.created_at || ''}</span>
+                        
+                            <span style="color: #9ca3af;">|</span>
+                            <span style="color: #9ca3af;">${post.created_at || ''}</span>
                         ${popularityBadge ? '<span style="color: #9ca3af;">|</span>' + popularityBadge : ''}
                     </div>
                     ${actionBtn}
@@ -543,10 +557,10 @@ function renderPosts() {
             const shown = postsToRender.length;
             const total = filtered.length;
             const remain = total - shown;
-            const btnText = postsExpanded ? '收起更多' : `显示更多 (${remain})`;
+            const btnText = postsExpanded ? dashboardCopy('收起更多', 'Show less') : dashboardCopy(`显示更多 (${remain})`, `Show more (${remain})`);
             moreWrap.innerHTML = `
                 <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap; justify-content:center;">
-                    <span style="font-size:12px; color:#64748b;">已显示 ${shown} / ${total}</span>
+                    <span style="font-size:12px; color:#64748b;">${dashboardCopy(`已显示 ${shown} / ${total}`, `Showing ${shown} / ${total}`)}</span>
                     <button onclick="togglePostsExpand()" style="width:auto; padding:8px 14px; background:#f8fafc; color:#334155; border:1px solid #cbd5e1; border-radius:8px; font-size:13px;">${btnText}</button>
                 </div>
             `;
@@ -595,9 +609,16 @@ function applyFilters(posts) {
         result = result.filter((p) => String(p.compensation || '').trim() === '');
     }
 
-    // 简单基于字段 popularity / likes / views 排序
     if (sortBy === 'popular') {
-        result.sort((a,b) => (b.popularity || b.likes || b.views || 0) - (a.popularity || a.likes || a.views || 0));
+        result.sort((a, b) => {
+            const applicantDiff = Number(b.applicant_count || 0) - Number(a.applicant_count || 0);
+            if (applicantDiff !== 0) return applicantDiff;
+
+            const viewDiff = Number(b.views || 0) - Number(a.views || 0);
+            if (viewDiff !== 0) return viewDiff;
+
+            return new Date(b.created_at || 0) - new Date(a.created_at || 0);
+        });
     } else {
         // newest
         result.sort((a,b) => new Date(b.created_at || 0) - new Date(a.created_at || 0));
@@ -883,15 +904,15 @@ async function openInbox() {
     document.getElementById('inbox-panel').classList.add('open');
     document.getElementById('inbox-detail-panel').classList.remove('open');
     const messagesContainer = document.getElementById('inbox-messages');
-    messagesContainer.innerHTML = '<p class="inbox-empty">Loading...</p>';
+    messagesContainer.innerHTML = `<p class="inbox-empty">${dashboardCopy('正在加载...', 'Loading...')}</p>`;
 
     const currentUser = localStorage.getItem('currentUser');
     try {
         const response = await fetch(`http://localhost:3000/api/my-messages?user=${encodeURIComponent(currentUser)}`);
         const data = await response.json();
-        if (!data.success) { messagesContainer.innerHTML = '<p class="inbox-empty">Failed to load messages</p>'; return; }
+        if (!data.success) { messagesContainer.innerHTML = `<p class="inbox-empty">${dashboardCopy('消息加载失败', 'Message loading failed')}</p>`; return; }
         if (!data.data || !data.data.length) {
-            messagesContainer.innerHTML = '<p class="inbox-empty">No applications yet.</p>';
+            messagesContainer.innerHTML = `<p class="inbox-empty">${dashboardCopy('还没有申请。', 'No applications yet.')}</p>`;
             return;
         }
 
@@ -900,7 +921,7 @@ async function openInbox() {
             const isTeamRecruit = msg.type === '寻人组队';
             const isPending = msg.status === 'pending';
             const statusCls = msg.status === 'accepted' ? 'accepted' : (msg.status === 'rejected' ? 'rejected' : 'pending');
-            const statusText = msg.status === 'accepted' ? 'Approved' : (msg.status === 'rejected' ? 'Declined' : 'Pending');
+            const statusText = msg.status === 'accepted' ? dashboardCopy('已通过', 'Accepted') : (msg.status === 'rejected' ? dashboardCopy('已拒绝', 'Rejected') : dashboardCopy('待处理', 'Pending'));
             const initials = (msg.applicant_name || '?').charAt(0).toUpperCase();
 
             return `
@@ -909,27 +930,27 @@ async function openInbox() {
                         <div class="inbox-app-avatar">${initials}</div>
                         <div class="inbox-app-meta">
                             <div class="inbox-app-name">${escapeHtml(msg.applicant_name)}</div>
-                            <div class="inbox-app-info">Applied to</div>
+                            <div class="inbox-app-info">${dashboardCopy('申请于', 'Applied')}</div>
                             <div class="inbox-app-title">${escapeHtml(msg.title)}</div>
                         </div>
                         <span class="inbox-app-status ${statusCls}">${statusText}</span>
                     </div>
-                    <div class="inbox-app-message">${escapeHtml(msg.message || '(no message)')}</div>
+                    <div class="inbox-app-message">${escapeHtml(msg.message || dashboardCopy('暂无消息', 'No message yet'))}</div>
                     <div class="inbox-app-actions">
                         ${(isTeamRecruit && isPending) ? `
-                            <button class="cm-button secondary" onclick="decideApplication(${msg.application_id},'accepted')">Approve</button>
-                            <button style="background:var(--error);color:#fff;border-color:var(--error);" onclick="decideApplication(${msg.application_id},'rejected')">Decline</button>
+                            <button class="cm-button secondary" onclick="decideApplication(${msg.application_id},'accepted')">${dashboardCopy('通过', 'Approve')}</button>
+                            <button style="background:var(--error);color:#fff;border-color:var(--error);" onclick="decideApplication(${msg.application_id},'rejected')">${dashboardCopy('拒绝', 'Reject')}</button>
                         ` : ''}
-                        <button class="cm-button ghost" onclick="window.location.href='profile.html?user=${encodeURIComponent(msg.applicant_name)}'">View Profile</button>
+                        <button class="cm-button ghost" onclick="window.location.href='profile.html?user=${encodeURIComponent(msg.applicant_name)}'">${dashboardCopy('查看主页', 'View profile')}</button>
                         <button class="cm-button ghost" onclick="window.location.href='messages.html?user=${encodeURIComponent(msg.applicant_name)}'">
-                            <span class="material-symbols-outlined">send</span> Message
+                            <span class="material-symbols-outlined">send</span> ${dashboardCopy('发消息', 'Message')}
                         </button>
                     </div>
                 </div>
             `;
         }).join('');
     } catch (_) {
-        messagesContainer.innerHTML = '<p class="inbox-empty">Network error</p>';
+        messagesContainer.innerHTML = `<p class="inbox-empty">${dashboardCopy('网络错误', 'Network error')}</p>`;
     }
 }
 
@@ -947,7 +968,7 @@ function openInboxDetail(idx) {
     const content = document.getElementById('inbox-detail-content');
     const initials = (msg.applicant_name || '?').charAt(0).toUpperCase();
     const statusCls = msg.status === 'accepted' ? 'accepted' : (msg.status === 'rejected' ? 'rejected' : 'pending');
-    const statusText = msg.status === 'accepted' ? 'Approved' : (msg.status === 'rejected' ? 'Declined' : 'Pending');
+    const statusText = msg.status === 'accepted' ? dashboardCopy('已通过', 'Accepted') : (msg.status === 'rejected' ? dashboardCopy('已拒绝', 'Rejected') : dashboardCopy('待处理', 'Pending'));
     content.innerHTML = `
         <div style="text-align:center;margin-bottom:20px;">
             <div class="inbox-app-avatar" style="width:72px;height:72px;font-size:28px;margin:0 auto 12px;">${initials}</div>
@@ -955,17 +976,17 @@ function openInboxDetail(idx) {
             <p style="margin:0;color:var(--outline);font-size:13px;">${escapeHtml(msg.applicant_dept || '')} · ${escapeHtml(msg.applicant_grade || '')}</p>
         </div>
         <div class="inbox-detail-section">
-            <h3>Application for</h3>
+            <h3>${dashboardCopy('申请项目', 'Applied post')}</h3>
             <p style="font-size:14px;font-weight:700;color:var(--primary);">${escapeHtml(msg.title || '')}</p>
             <span class="inbox-app-status ${statusCls}">${statusText}</span>
         </div>
         <div class="inbox-detail-section">
-            <h3>Message</h3>
-            <div class="inbox-app-message">${escapeHtml(msg.message || '(no message)')}</div>
+            <h3>${dashboardCopy('消息', 'Message')}</h3>
+            <div class="inbox-app-message">${escapeHtml(msg.message || dashboardCopy('暂无消息', 'No message yet'))}</div>
         </div>
         <div class="inbox-app-actions" style="flex-direction:column;">
             <button class="cm-button" style="width:100%;" onclick="window.location.href='messages.html?user=${encodeURIComponent(msg.applicant_name || '')}'">
-                <span class="material-symbols-outlined">send</span> Send Message
+                <span class="material-symbols-outlined">send</span> ${dashboardCopy('发消息', 'Message')}
             </button>
         </div>
     `;
@@ -978,9 +999,11 @@ function closeInboxDetail() {
 
 // ===== 简单私聊功能（前端） =====
 function openChat(withUser, contextTitle) {
-    document.getElementById('chat-with').innerText = `与 ${withUser} 的聊天 ${contextTitle ? ' — ' + contextTitle : ''}`;
+    document.getElementById('chat-with').innerText = campusMatchLanguage() === 'en'
+        ? `Chat with ${withUser}${contextTitle ? ' — ' + contextTitle : ''}`
+        : `与 ${withUser} 的聊天${contextTitle ? ' — ' + contextTitle : ''}`;
     document.getElementById('chat-modal').style.display = 'flex';
-    document.getElementById('chat-history').innerHTML = '<p style="color:#9ca3af; text-align:center;">正在加载对话...</p>';
+    document.getElementById('chat-history').innerHTML = `<p style="color:#9ca3af; text-align:center;">${dashboardCopy('正在加载对话...', 'Loading conversation...')}</p>`;
     // 记住当前聊天对象
     window._chatTarget = withUser;
     fetchConversation(withUser);
@@ -1016,7 +1039,7 @@ async function fetchConversation(withUser) {
         const j = await resp.json();
         const h = document.getElementById('chat-history');
         if (!j.success) {
-            h.innerHTML = '<p style="color:#ef4444; text-align:center;">无法加载对话</p>';
+            h.innerHTML = `<p style="color:#ef4444; text-align:center;">${dashboardCopy('无法加载对话', 'Failed to load conversation')}</p>`;
             return;
         }
         h.innerHTML = '';
@@ -1031,7 +1054,7 @@ async function fetchConversation(withUser) {
         });
         h.scrollTop = h.scrollHeight;
     } catch (err) {
-        document.getElementById('chat-history').innerHTML = '<p style="color:#ef4444; text-align:center;">网络错误，无法加载对话</p>';
+        document.getElementById('chat-history').innerHTML = `<p style="color:#ef4444; text-align:center;">${dashboardCopy('网络错误，无法加载对话', 'Network error, failed to load conversation')}</p>`;
     }
 }
 
@@ -1048,7 +1071,7 @@ async function sendChatMessage() {
     const to = window._chatTarget;
     if (!to) {
         window._isSending = false;
-        return alert('目标用户缺失');
+        return alert(dashboardCopy('目标用户缺失', 'Missing chat target'));
     }
 
     try {
@@ -1070,10 +1093,10 @@ async function sendChatMessage() {
             h.scrollTop = h.scrollHeight;
             input.focus();
         } else {
-            alert('发送失败：' + j.message);
+            alert(dashboardCopy('发送失败：', 'Send failed: ') + j.message);
         }
     } catch (err) {
-        alert('网络错误，发送失败');
+        alert(dashboardCopy('网络错误，发送失败', 'Network error. Send failed.'));
     } finally {
         window._isSending = false;
     }
@@ -1092,14 +1115,14 @@ function updatePlaceholders() {
     const titleInput = document.getElementById('post-title');
     const contentInput = document.getElementById('post-content');
     if (selectedPostLabel === '提供技能') {
-        titleInput.placeholder = '你能提供什么支持？';
-        contentInput.placeholder = '写明可提供的支持内容、可参与时段、协作方式和边界';
+        titleInput.placeholder = dashboardCopy('你能提供什么支持？', 'What support can you offer?');
+        contentInput.placeholder = dashboardCopy('写明可提供的支持内容、可参与时段、协作方式和边界', 'Describe the support, availability, collaboration style, and limits.');
     } else if (selectedPostLabel === '自定义') {
-        titleInput.placeholder = '给你的活动起一个清晰标题';
-        contentInput.placeholder = '描述一下吧';
+        titleInput.placeholder = dashboardCopy('给你的活动起一个清晰标题', 'Give your post a clear title');
+        contentInput.placeholder = dashboardCopy('描述一下吧', 'Add a short description');
     } else {
-        titleInput.placeholder = '你希望招募什么角色？';
-        contentInput.placeholder = '写明活动目标、需要的角色、时间安排和协作要求';
+        titleInput.placeholder = dashboardCopy('你希望招募什么角色？', 'What role are you recruiting for?');
+        contentInput.placeholder = dashboardCopy('写明活动目标、需要的角色、时间安排和协作要求', 'Describe the goal, needed roles, timing, and collaboration requirements.');
     }
 }
 
@@ -1155,6 +1178,12 @@ async function decideApplication(applicationId, decision) {
 let myProjects = [];
 let activeProjectId = null;
 function statusLabel(status) {
+    if (campusMatchLanguage() === 'en') {
+        if (status === 'recruiting') return 'Recruiting';
+        if (status === 'executing') return 'In progress';
+        if (status === 'completed') return 'Completed';
+        return status || 'Unknown';
+    }
     if (status === 'recruiting') return '招募中';
     if (status === 'executing') return '执行中';
     if (status === 'completed') return '已结项';
@@ -1200,19 +1229,20 @@ function updateManagementEntryVisibility(hasManagedProject) {
 }
 
 function renderSimpleHomeFlow(projectsCount) {
+    const isEnglish = campusMatchLanguage() === 'en';
     const panel = document.getElementById('simple-flow-panel');
     if (!panel) return;
     panel.innerHTML = `
         <div style="display:flex; justify-content:space-between; align-items:center; gap:10px; flex-wrap:wrap; margin-bottom:8px;">
-            <strong style="font-size:16px; color:#111827;">主页简易流程</strong>
-            <span style="font-size:12px; color:#64748b;">重协作项目 ${projectsCount}</span>
+            <strong style="font-size:16px; color:#111827;">${isEnglish ? 'Home flow' : '主页简易流程'}</strong>
+            <span style="font-size:12px; color:#64748b;">${isEnglish ? `Projects with collaboration mode enabled ${projectsCount}` : `重协作项目 ${projectsCount}`}</span>
         </div>
         <div style="display:flex; gap:8px; flex-wrap:wrap; margin-bottom:10px;">
-            <span style="font-size:12px; background:#ecfeff; color:#155e75; padding:4px 8px; border-radius:999px;">发布帖子</span>
-            <span style="font-size:12px; background:#eff6ff; color:#1d4ed8; padding:4px 8px; border-radius:999px;">协作贴</span>
-            <span style="font-size:12px; background:#f0fdf4; color:#166534; padding:4px 8px; border-radius:999px;">成员调整</span>
+            <span style="font-size:12px; background:#ecfeff; color:#155e75; padding:4px 8px; border-radius:999px;">${isEnglish ? 'Post' : '发布帖子'}</span>
+            <span style="font-size:12px; background:#eff6ff; color:#1d4ed8; padding:4px 8px; border-radius:999px;">${isEnglish ? 'Collaboration post' : '协作贴'}</span>
+            <span style="font-size:12px; background:#f0fdf4; color:#166534; padding:4px 8px; border-radius:999px;">${isEnglish ? 'Member changes' : '成员调整'}</span>
         </div>
-        <div style="font-size:13px; color:#475569; line-height:1.6;">只有你参与了开启项目管理的项目，才会展示下方项目管理界面，需求和协作贴都像发帖一样直接。</div>
+        <div style="font-size:13px; color:#475569; line-height:1.6;">${isEnglish ? 'Only projects with collaboration mode enabled will show the management panel below. Requirements and collaboration posts work like regular posts.' : '只有你参与了开启项目管理的项目，才会展示下方项目管理界面，需求和协作贴都像发帖一样直接。'}</div>
     `;
 }
 
@@ -1221,13 +1251,13 @@ async function loadProjectDetail(projectId) {
     const panel = document.getElementById('project-detail-panel');
     if (!panel) return;
 
-    panel.innerHTML = '<p style="color:#9ca3af;">正在加载项目详情...</p>';
+    panel.innerHTML = `<p style="color:#9ca3af;">${campusMatchLanguage() === 'en' ? 'Loading project details...' : '正在加载项目详情...'}</p>`;
 
     try {
         const response = await fetch(`http://localhost:3000/api/projects/${projectId}/detail?user=${encodeURIComponent(currentUser)}`);
         const data = await response.json();
         if (!data.success) {
-            panel.innerHTML = `<p style="color:#ef4444;">${data.message || '加载失败'}</p>`;
+            panel.innerHTML = `<p style="color:#ef4444;">${data.message || (campusMatchLanguage() === 'en' ? 'Failed to load' : '加载失败')}</p>`;
             return;
         }
 
@@ -1243,30 +1273,32 @@ async function loadProjectDetail(projectId) {
             </div>
 
             <div style="margin:10px 0 14px 0;">
-                <strong style="display:block; margin-bottom:6px;">人员组成</strong>
+                <strong style="display:block; margin-bottom:6px;">${campusMatchLanguage() === 'en' ? 'Team' : '人员组成'}</strong>
                 <div style="display:flex; gap:6px; flex-wrap:wrap;">
                     ${members.length ? members.map((m) => {
-                        const roleText = m.role === 'leader' ? '负责人' : (m.role === 'core_member' ? '核心成员' : '普通成员');
+                        const roleText = campusMatchLanguage() === 'en'
+                            ? (m.role === 'leader' ? 'Leader' : (m.role === 'core_member' ? 'Core member' : 'Member'))
+                            : (m.role === 'leader' ? '负责人' : (m.role === 'core_member' ? '核心成员' : '普通成员'));
                         const bg = m.role === 'leader' ? '#dbeafe' : (m.role === 'core_member' ? '#ecfeff' : '#f1f5f9');
                         return `<span style="font-size:12px; background:${bg}; color:#334155; padding:4px 8px; border-radius:999px;">${m.user_name}（${roleText}）</span>`;
-                    }).join('') : '<span style="font-size:12px; color:#9ca3af;">暂无成员信息</span>'}
+                    }).join('') : `<span style="font-size:12px; color:#9ca3af;">${campusMatchLanguage() === 'en' ? 'No member info yet' : '暂无成员信息'}</span>`}
                 </div>
             </div>
 
             <div style="margin-bottom:14px;">
-                <strong style="display:block; margin-bottom:6px;">快速打卡</strong>
+                <strong style="display:block; margin-bottom:6px;">${campusMatchLanguage() === 'en' ? 'Quick check-in' : '快速打卡'}</strong>
                 <div style="display:flex; gap:8px; flex-wrap:wrap; margin-bottom:8px;">
-                    <input id="checkin-note" type="text" placeholder="今天完成了什么？" style="flex:1; min-width:220px; padding:8px; margin:0;" />
-                    <button onclick="submitCheckin(${project.id})" style="width:auto; padding:8px 12px; font-size:12px;">提交打卡</button>
+                    <input id="checkin-note" type="text" placeholder="${campusMatchLanguage() === 'en' ? 'What did you finish today?' : '今天完成了什么？'}" style="flex:1; min-width:220px; padding:8px; margin:0;" />
+                    <button onclick="submitCheckin(${project.id})" style="width:auto; padding:8px 12px; font-size:12px;">${campusMatchLanguage() === 'en' ? 'Submit' : '提交打卡'}</button>
                 </div>
                 <div style="max-height:160px; overflow:auto; background:#fff; border:1px solid #e5e7eb; border-radius:8px; padding:8px;">
-                    ${checkins.length ? checkins.map((c) => `<div style="display:flex; justify-content:space-between; gap:10px; align-items:flex-start; font-size:12px; color:#374151; padding:6px 0; border-bottom:1px dashed #e5e7eb;"><div><strong>${c.user_name}</strong>：${c.progress_note || '无'} <span style="color:#9ca3af;">${c.created_at}</span></div></div>`).join('') : '<span style="font-size:12px; color:#9ca3af;">暂无打卡记录</span>'}
+                    ${checkins.length ? checkins.map((c) => `<div style="display:flex; justify-content:space-between; gap:10px; align-items:flex-start; font-size:12px; color:#374151; padding:6px 0; border-bottom:1px dashed #e5e7eb;"><div><strong>${c.user_name}</strong>：${c.progress_note || (campusMatchLanguage() === 'en' ? 'No note' : '无')} <span style="color:#9ca3af;">${c.created_at}</span></div></div>`).join('') : `<span style="font-size:12px; color:#9ca3af;">${campusMatchLanguage() === 'en' ? 'No check-ins yet' : '暂无打卡记录'}</span>`}
                 </div>
             </div>
-            <button onclick="openFullTeamCenter(${project.id})" style="width:auto; padding:8px 12px; font-size:12px; background:#0f172a; color:#fff;">进入项目管理</button>
+            <button onclick="openFullTeamCenter(${project.id})" style="width:auto; padding:8px 12px; font-size:12px; background:#0f172a; color:#fff;">${campusMatchLanguage() === 'en' ? 'Open project management' : '进入项目管理'}</button>
         `;
     } catch (err) {
-        panel.innerHTML = '<p style="color:#ef4444;">网络错误，加载失败</p>';
+        panel.innerHTML = `<p style="color:#ef4444;">${campusMatchLanguage() === 'en' ? 'Network error, failed to load' : '网络错误，加载失败'}</p>`;
     }
 }
 
@@ -1366,7 +1398,7 @@ async function loadRecommendations() {
     const container = document.getElementById('recommendation-container');
     if (!currentUser || !container) return;
 
-    container.innerHTML = '<p style="text-align:center; color:#9ca3af; padding:16px;">正在计算推荐...</p>';
+    container.innerHTML = `<p style="text-align:center; color:#9ca3af; padding:16px;">${dashboardCopy('正在计算推荐...', 'Computing recommendations...')}</p>`;
 
     try {
         let resp = await fetch(`http://localhost:3000/api/recommendations-ai?user=${encodeURIComponent(currentUser)}&limit=2`);
@@ -1377,7 +1409,7 @@ async function loadRecommendations() {
             data = await resp.json();
         }
         if (!data.success) {
-            container.innerHTML = `<p style="color:#ef4444; text-align:center;">${data.message || '推荐加载失败'}</p>`;
+            container.innerHTML = `<p style="color:#ef4444; text-align:center;">${data.message || dashboardCopy('推荐加载失败', 'Failed to load recommendations')}</p>`;
             return;
         }
 
@@ -1387,7 +1419,7 @@ async function loadRecommendations() {
 
         const items = data.data || [];
         if (!items.length) {
-            container.innerHTML = `${fallbackNote}<p style="color:#6b7280; text-align:center; padding:12px;">当前没有符合条件的推荐，先完善个人画像或发布更多帖子试试。</p>`;
+            container.innerHTML = `${fallbackNote}<p style="color:#6b7280; text-align:center; padding:12px;">${dashboardCopy('当前没有符合条件的推荐，先完善个人画像或发布更多帖子试试。', 'No matches yet. Try completing your profile or posting more opportunities.')}</p>`;
             return;
         }
 
@@ -1398,8 +1430,8 @@ async function loadRecommendations() {
                     const reasons = (item.recommendation_reasons || []).map((r) => `<div style="font-size:12px; color:#334155;">• ${r}</div>`).join('');
                     const postCampus = item.campus || '';
                     const modeText = Number(item.accept_cross_campus || 0) === 1
-                        ? (postCampus ? `可跨校区 · 发布校区 ${postCampus}` : '可跨校区')
-                        : (postCampus ? `同校区优先 · ${postCampus}` : '');
+                        ? (postCampus ? dashboardCopy(`可跨校区 · 发布校区 ${postCampus}`, `Cross-campus · Posted at ${postCampus}`) : dashboardCopy('可跨校区', 'Cross-campus'))
+                        : (postCampus ? dashboardCopy(`同校区优先 · ${postCampus}`, `Same campus first · ${postCampus}`) : '');
 
                     return `
                         <div class="post-card recommendation-card" style="padding: 18px;">
@@ -1410,8 +1442,8 @@ async function loadRecommendations() {
                             <div style="max-height:86px; overflow:hidden; margin-bottom:10px; font-size:15px; color:#374151; line-height:1.55;">${item.content || ''}</div>
                             <div style="display:flex; flex-direction:column; gap:4px; margin-bottom:12px;">${reasons}</div>
                             <div style="display:flex; justify-content:space-between; align-items:center; gap:8px;">
-                                <a href="profile.html?user=${item.author}" style="font-size:13px; color:#2563eb; text-decoration:none;">发布者：${item.author}</a>
-                                <button onclick="applyForPost(${item.id})" style="width:auto; padding:7px 12px; font-size:13px; background:#2563eb; color:#fff; border:none; border-radius:7px;">我感兴趣</button>
+                                <a href="profile.html?user=${item.author}" style="font-size:13px; color:#2563eb; text-decoration:none;">${dashboardCopy('发布者：', 'By ')}${item.author}</a>
+                                <button onclick="applyForPost(${item.id})" style="width:auto; padding:7px 12px; font-size:13px; background:#2563eb; color:#fff; border:none; border-radius:7px;">${dashboardCopy('我感兴趣', 'Interested')}</button>
                             </div>
                         </div>
                     `;
@@ -1419,7 +1451,7 @@ async function loadRecommendations() {
             </div>
         `;
     } catch (err) {
-        container.innerHTML = '<p style="color:#ef4444; text-align:center;">网络错误，推荐加载失败</p>';
+        container.innerHTML = `<p style="color:#ef4444; text-align:center;">${dashboardCopy('网络错误，推荐加载失败', 'Network error, failed to load recommendations')}</p>`;
     }
 }
 

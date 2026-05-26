@@ -3,10 +3,10 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Profile - CampusMatch</title>
+    <title>个人主页 - CampusMatch</title>
     <link rel="stylesheet" href="style.css">
 </head>
-<body class="profile-page">
+<body class="profile-page" data-cm-page="profile">
     <div class="cm-app-shell">
         <aside class="cm-sidebar">
             <a class="cm-brand" href="dashboard.html">
@@ -16,26 +16,26 @@
                     <span class="cm-brand-subtitle">Academic Workspace</span>
                 </span>
             </a>
-            <nav class="cm-nav" aria-label="Workspace">
+            <nav class="cm-nav" aria-label="工作区">
                 <button class="cm-nav-link" type="button" onclick="window.location.href='dashboard.html'">
-                    <span class="material-symbols-outlined">dashboard</span> Dashboard
+                    <span class="material-symbols-outlined">dashboard</span> 首页
                 </button>
                 <button class="cm-nav-link" type="button" onclick="window.location.href='team_management.html'">
-                    <span class="material-symbols-outlined">account_tree</span> Projects
+                    <span class="material-symbols-outlined">account_tree</span> 项目
                 </button>
                 <button class="cm-nav-link" type="button" onclick="window.location.href='community.html'">
-                    <span class="material-symbols-outlined">groups</span> Community
+                    <span class="material-symbols-outlined">groups</span> 社区
                 </button>
                 <button class="cm-nav-link" type="button" onclick="window.location.href='messages.html'">
-                    <span class="material-symbols-outlined">chat</span> Messages
+                    <span class="material-symbols-outlined">chat</span> 消息
                 </button>
             </nav>
             <div class="cm-sidebar-footer">
                 <button class="cm-nav-link active" type="button">
-                    <span class="material-symbols-outlined">account_circle</span> Profile
+                    <span class="material-symbols-outlined">account_circle</span> 个人主页
                 </button>
                 <button class="cm-nav-link" type="button" onclick="localStorage.removeItem('currentUser'); window.location.href='index.html';">
-                    <span class="material-symbols-outlined">logout</span> Log out
+                    <span class="material-symbols-outlined">logout</span> 退出登录
                 </button>
             </div>
         </aside>
@@ -44,13 +44,13 @@
             <header class="profile-topbar">
                 <div>
                     <button class="back-btn-custom" id="btn-back-profile" style="display:none; margin-bottom:6px;" onclick="history.back()">
-                        <span class="material-symbols-outlined">arrow_back</span> Back
+                        <span class="material-symbols-outlined">arrow_back</span> 返回
                     </button>
-                    <h1 class="profile-title">Academic profile</h1>
-                    <p class="muted" style="margin:4px 0 0;">Skills, reputation, and collaboration history.</p>
+                    <h1 class="profile-title">学术档案</h1>
+                    <p class="muted" style="margin:4px 0 0;">技能、信誉与协作记录。</p>
                 </div>
                 <button class="cm-button ghost" id="btn-delete-account" style="color:var(--error);border-color:var(--error);display:none;" onclick="openDeleteAccount()">
-                    <span class="material-symbols-outlined">delete_forever</span> Delete Account
+                    <span class="material-symbols-outlined">delete_forever</span> 删除账号
                 </button>
             </header>
 
@@ -69,7 +69,7 @@
             <p class="user-tags" id="display-campus-hours">校区加载中...</p>
             <div class="skills-container" id="display-auto-tags"></div>
             <a id="display-portfolio" class="portfolio-link" href="#" target="_blank" style="display:none;">
-                <span class="material-symbols-outlined">link</span> View portfolio
+                <span class="material-symbols-outlined">link</span> 查看作品集
             </a>
             <div class="user-bio" id="display-bio">加载中...</div>
             <p class="user-tags" id="display-bio-mbti" style="margin-top:6px; display:none;"></p>
@@ -80,12 +80,12 @@
         <section class="reviews-card">
             <div class="rating-header">
                 <div>
-                    <span class="cm-eyebrow">Reputation</span>
-                    <h2 style="margin:0;">Task reviews</h2>
+                    <span class="cm-eyebrow">信誉</span>
+                    <h2 style="margin:0;">任务评价</h2>
                 </div>
                 <div style="text-align:right;">
                     <div class="average-score" id="display-avg">0.0 <span style="font-size:20px;">★</span></div>
-                    <span class="muted">Weighted score</span>
+                    <span class="muted">加权分数</span>
                 </div>
             </div>
 
@@ -95,15 +95,15 @@
 
             <div class="activity-board" style="margin-top:22px;">
                 <div class="cm-section-head">
-                    <h3 style="margin:0;">My activity</h3>
+                    <h3 style="margin:0;">我的动态</h3>
                 </div>
                 <div class="activity-grid" style="margin-top:12px;">
                     <div class="activity-col">
-                        <strong>Ongoing</strong>
+                        <strong>进行中</strong>
                         <div id="ongoing-activities" style="margin-top:8px;"></div>
                     </div>
                     <div class="activity-col">
-                        <strong>History</strong>
+                        <strong>历史记录</strong>
                         <div id="history-activities" style="margin-top:8px;"></div>
                     </div>
                 </div>
@@ -115,7 +115,7 @@
 
     <div id="edit-modal" class="modal" style="display:none;">
         <div class="modal-content" style="padding:28px;">
-            <h2>Edit profile</h2>
+            <h2>编辑资料</h2>
             <div class="field-stack">
                 <input type="text" id="edit-dept" placeholder="院系">
                 <input type="text" id="edit-grade" placeholder="年级">
@@ -126,8 +126,8 @@
                 <input type="text" id="edit-portfolio" placeholder="个人主页 / 作品集链接">
                 <textarea id="edit-bio" rows="4" placeholder="一句话介绍你的经历、技能、偏好，可写入 MBTI"></textarea>
                 <div class="header-btns" style="justify-content:flex-end;">
-                    <button type="button" class="cm-button ghost" onclick="closeModal('edit-modal')">Cancel</button>
-                    <button type="button" class="cm-button secondary" onclick="saveProfile()">Save Profile</button>
+                    <button type="button" class="cm-button ghost" onclick="closeModal('edit-modal')">取消</button>
+                    <button type="button" class="cm-button secondary" onclick="saveProfile()">保存资料</button>
                 </div>
             </div>
         </div>
@@ -138,7 +138,7 @@
         <div style="max-width:720px;margin:40px auto;padding:0 20px 60px;">
             <!-- Close button -->
             <div style="display:flex;justify-content:flex-end;margin-bottom:12px;">
-                <button onclick="closeDeleteAccount()" class="cm-button ghost" type="button">&times; Close</button>
+                <button onclick="closeDeleteAccount()" class="cm-button ghost" type="button">&times; 关闭</button>
             </div>
 
             <!-- Main card -->
@@ -155,72 +155,73 @@
                         <span class="material-symbols-outlined" style="font-size:26px;color:var(--error);">warning</span>
                     </div>
                     <div>
-                        <h2 style="margin:0;font-size:24px;font-weight:800;">Delete Account</h2>
-                        <p style="margin:2px 0 0;font-size:13px;color:var(--on-surface-variant);">We're sorry to see you go. Please read carefully before proceeding.</p>
+                        <h2 style="margin:0;font-size:24px;font-weight:800;">删除账号</h2>
+                        <p style="margin:2px 0 0;font-size:13px;color:var(--on-surface-variant);">很遗憾你要离开，请在继续前仔细阅读。</p>
                     </div>
                 </div>
 
                 <!-- What happens next -->
                 <div style="background:var(--surface-container-low);border:1px solid rgba(194,198,214,0.4);border-radius:10px;padding:22px;margin-bottom:20px;position:relative;z-index:1;">
                     <h4 style="margin:0 0 14px;font-size:14px;font-weight:800;color:var(--error);display:flex;align-items:center;gap:6px;">
-                        <span class="material-symbols-outlined" style="font-size:18px;">delete_forever</span> What happens next?
+                        <span class="material-symbols-outlined" style="font-size:18px;">delete_forever</span> 接下来会发生什么？
                     </h4>
                     <div style="display:flex;flex-direction:column;gap:12px;font-size:13px;color:var(--on-surface-variant);line-height:1.55;">
                         <div style="display:flex;align-items:flex-start;gap:10px;">
                             <span class="material-symbols-outlined" style="font-size:17px;color:var(--outline);flex-shrink:0;margin-top:1px;">folder_off</span>
-                            <span><strong style="color:var(--on-surface);">Projects orphaned.</strong> Sole-contributor projects will be deleted. Collaborative projects will be transferred or anonymized.</span>
+                            <span><strong style="color:var(--on-surface);">项目处理。</strong> 单人项目会被删除，多人协作项目会转移或匿名处理。</span>
                         </div>
                         <div style="display:flex;align-items:flex-start;gap:10px;">
                             <span class="material-symbols-outlined" style="font-size:17px;color:var(--outline);flex-shrink:0;margin-top:1px;">speaker_notes_off</span>
-                            <span><strong style="color:var(--on-surface);">Messages lost.</strong> Direct messages cleared. Group messages retain "Deleted User" label.</span>
+                            <span><strong style="color:var(--on-surface);">消息处理。</strong> 私信会被清除，群消息会保留“已删除用户”标记。</span>
                         </div>
                         <div style="display:flex;align-items:flex-start;gap:10px;">
                             <span class="material-symbols-outlined" style="font-size:17px;color:var(--outline);flex-shrink:0;margin-top:1px;">reviews</span>
-                            <span><strong style="color:var(--on-surface);">Reviews gone.</strong> Pending reviews cancelled. Completed reviews anonymized.</span>
+                            <span><strong style="color:var(--on-surface);">评价处理。</strong> 待处理评价会取消，已完成评价会匿名处理。</span>
                         </div>
                     </div>
                 </div>
 
                 <!-- Why leaving -->
                 <div style="margin-bottom:20px;position:relative;z-index:1;">
-                    <h4 style="margin:0 0 12px;font-size:14px;font-weight:800;">Why are you leaving? <span style="font-weight:400;color:var(--outline);font-size:12px;">(optional)</span></h4>
+                    <h4 style="margin:0 0 12px;font-size:14px;font-weight:800;">为什么要离开？ <span style="font-weight:400;color:var(--outline);font-size:12px;">（可选）</span></h4>
                     <div style="display:flex;flex-direction:column;gap:9px;">
                         <label style="display:flex;align-items:center;gap:9px;font-size:13px;color:var(--on-surface-variant);cursor:pointer;">
-                            <input type="checkbox" value="Finished academic projects" style="width:16px;height:16px;accent-color:var(--primary);"> Finished my academic projects
+                            <input type="checkbox" value="Finished projects" style="width:16px;height:16px;accent-color:var(--primary);"> 已完成项目
                         </label>
                         <label style="display:flex;align-items:center;gap:9px;font-size:13px;color:var(--on-surface-variant);cursor:pointer;">
-                            <input type="checkbox" value="Too busy" style="width:16px;height:16px;accent-color:var(--primary);"> Too busy to participate
+                            <input type="checkbox" value="Too busy" style="width:16px;height:16px;accent-color:var(--primary);"> 太忙了
                         </label>
                         <label style="display:flex;align-items:center;gap:9px;font-size:13px;color:var(--on-surface-variant);cursor:pointer;">
-                            <input type="checkbox" value="Found another platform" style="width:16px;height:16px;accent-color:var(--primary);"> Found another platform
+                            <input type="checkbox" value="Found another platform" style="width:16px;height:16px;accent-color:var(--primary);"> 找到了其他平台
                         </label>
                         <label style="display:flex;align-items:center;gap:9px;font-size:13px;color:var(--on-surface-variant);cursor:pointer;">
-                            <input type="checkbox" value="Privacy concerns" style="width:16px;height:16px;accent-color:var(--primary);"> Privacy concerns
+                            <input type="checkbox" value="Privacy concerns" style="width:16px;height:16px;accent-color:var(--primary);"> 隐私顾虑
                         </label>
                     </div>
-                    <input type="text" id="delete-feedback" placeholder="Other reason..." style="margin-top:10px;font-size:13px;min-height:38px;width:100%;">
+                    <input type="text" id="delete-feedback" placeholder="其他原因..." style="margin-top:10px;font-size:13px;min-height:38px;width:100%;">
                 </div>
 
                 <!-- Confirmation -->
                 <div style="background:rgba(186,26,26,0.06);padding:16px 18px;border-radius:10px;border:1px solid rgba(186,26,26,0.18);margin-bottom:22px;position:relative;z-index:1;">
                     <label style="display:flex;align-items:center;gap:10px;font-size:13px;font-weight:700;color:var(--error);cursor:pointer;">
                         <input type="checkbox" id="delete-confirm" onchange="toggleDeleteBtn()" style="width:18px;height:18px;flex-shrink:0;">
-                        I understand this action is permanent and irreversible. My data cannot be recovered once deleted.
+                        我理解此操作是永久且不可撤销的，删除后数据无法恢复。
                     </label>
                 </div>
 
                 <!-- Action buttons -->
                 <div style="display:flex;gap:12px;flex-direction:row-reverse;flex-wrap:wrap;position:relative;z-index:1;">
-                    <button class="cm-button" onclick="closeDeleteAccount()" style="min-height:48px;flex:1;min-width:160px;">Keep My Account</button>
+                    <button class="cm-button" onclick="closeDeleteAccount()" style="min-height:48px;flex:1;min-width:160px;">保留账号</button>
                     <button id="btn-delete-confirm" onclick="submitDeleteAccount()" disabled
                         style="min-height:48px;flex:1;min-width:160px;padding:10px 24px;border-radius:10px;border:1px solid var(--error);background:var(--surface-container-lowest);color:var(--error);font-weight:800;font-size:14px;cursor:default;opacity:0.4;transition:opacity 0.2s ease;">
-                        <span class="material-symbols-outlined" style="font-size:18px;vertical-align:middle;">delete_forever</span> Delete Permanently
+                        <span class="material-symbols-outlined" style="font-size:18px;vertical-align:middle;">delete_forever</span> 永久删除
                     </button>
                 </div>
             </div>
         </div>
     </div>
 
+    <script src="site_language.js"></script>
     <script src="profile.js"></script>
 </body>
 </html>

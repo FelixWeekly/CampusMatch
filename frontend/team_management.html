@@ -1,96 +1,94 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="zh-CN">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Collaborative Hub - CampusMatch</title>
+    <title>协作中心 - CampusMatch</title>
     <link rel="stylesheet" href="style.css">
 </head>
-<body class="team-page-body">
+<body class="team-page-body" data-cm-page="team_management">
     <div class="cm-app-shell">
         <aside class="cm-sidebar">
             <a class="cm-brand" href="dashboard.html">
                 <span class="cm-brand-mark"><span class="material-symbols-outlined" style="font-variation-settings:'FILL' 1;">school</span></span>
                 <span>
                     <span class="cm-brand-title">CampusMatch</span>
-                    <span class="cm-brand-subtitle">Academic Workspace</span>
+                    <span class="cm-brand-subtitle">学术工作区</span>
                 </span>
             </a>
-            <nav class="cm-nav" aria-label="Workspace">
+            <nav class="cm-nav" aria-label="工作区">
                 <button class="cm-nav-link" type="button" onclick="window.location.href='dashboard.html'">
-                    <span class="material-symbols-outlined">dashboard</span> Dashboard
+                    <span class="material-symbols-outlined">dashboard</span> 首页
                 </button>
                 <button class="cm-nav-link active" type="button">
-                    <span class="material-symbols-outlined">account_tree</span> Projects
+                    <span class="material-symbols-outlined">account_tree</span> 项目
                 </button>
                 <button class="cm-nav-link" type="button" onclick="window.location.href='community.html'">
-                    <span class="material-symbols-outlined">groups</span> Community
+                    <span class="material-symbols-outlined">groups</span> 社区
                 </button>
                 <button class="cm-nav-link" type="button" onclick="window.location.href='messages.html'">
-                    <span class="material-symbols-outlined">chat</span> Messages
+                    <span class="material-symbols-outlined">chat</span> 消息
                 </button>
             </nav>
             <div class="cm-sidebar-footer">
                 <button class="cm-nav-link" type="button" onclick="window.location.href='profile.html'">
-                    <span class="material-symbols-outlined">account_circle</span> Profile
+                    <span class="material-symbols-outlined">account_circle</span> 个人主页
                 </button>
                 <button class="cm-nav-link" type="button" onclick="localStorage.removeItem('currentUser'); window.location.href='index.html';">
-                    <span class="material-symbols-outlined">logout</span> Log out
+                    <span class="material-symbols-outlined">logout</span> 退出登录
                 </button>
             </div>
         </aside>
 
         <main class="cm-main">
-            <!-- Top bar with project switcher -->
             <header class="cm-topbar">
                 <div class="project-switcher">
                     <button class="project-switcher-trigger" id="project-switcher-trigger" onclick="toggleProjectSwitcher()">
-                        <span id="current-project-name">Select a project</span>
+                        <span id="current-project-name">选择一个项目</span>
                         <span class="material-symbols-outlined">expand_more</span>
                     </button>
                     <div class="project-switcher-dropdown" id="project-switcher-dropdown">
                         <div class="project-switcher-search">
-                            <input type="text" id="switcher-search" placeholder="Search projects..." oninput="filterSwitcherProjects()">
+                            <input type="text" id="switcher-search" placeholder="搜索项目..." oninput="filterSwitcherProjects()">
                         </div>
                         <div id="switcher-project-list"></div>
                         <div class="project-switcher-footer">
-                            <a href="dashboard.html" style="font-size:13px; font-weight:700; color:var(--primary); text-decoration:none;">+ New Collaboration</a>
+                            <a href="dashboard.html" style="font-size:13px; font-weight:700; color:var(--primary); text-decoration:none;">+ 发起新协作</a>
                         </div>
                     </div>
                 </div>
                 <div class="header-btns">
-                    <button type="button" class="team-panel-ghost" id="btn-pin-project" style="display:none;" onclick="togglePinProject()" title="Pin to top">
-                        <span class="material-symbols-outlined" id="pin-icon">push_pin</span> Pin
+                    <button type="button" class="team-panel-ghost" id="btn-pin-project" style="display:none;" onclick="togglePinProject()" title="置顶">
+                        <span class="material-symbols-outlined" id="pin-icon">push_pin</span> 置顶
                     </button>
                     <button type="button" class="team-panel-ghost" id="btn-project-chat" style="display:none;" onclick="openProjectChat()">
-                        <span class="material-symbols-outlined">chat</span> Chat
+                        <span class="material-symbols-outlined">chat</span> 聊天
                     </button>
                     <button type="button" class="team-panel-ghost" id="btn-invite-member" style="display:none;" onclick="switchView('activity')">
-                        <span class="material-symbols-outlined">person_add</span> Collaborate
+                        <span class="material-symbols-outlined">person_add</span> 协作
                     </button>
                 </div>
             </header>
 
-            <!-- Tab navigation -->
             <nav class="project-tabs" id="project-tabs" style="display:none;">
-                <button class="project-tab active" data-view="overview" onclick="switchView('overview')">Overview</button>
-                <button class="project-tab" data-view="issues" onclick="switchView('issues')">Requirements</button>
-                <button class="project-tab" data-view="members" onclick="switchView('members')">Members</button>
-                <button class="project-tab" data-view="activity" onclick="switchView('activity')">Collaboration</button>
-                <button class="project-tab" data-view="checkins" onclick="switchView('checkins')">Check-ins</button>
+                <button class="project-tab active" data-view="overview" onclick="switchView('overview')">概览</button>
+                <button class="project-tab" data-view="issues" onclick="switchView('issues')">需求</button>
+                <button class="project-tab" data-view="members" onclick="switchView('members')">成员</button>
+                <button class="project-tab" data-view="activity" onclick="switchView('activity')">协作</button>
+                <button class="project-tab" data-view="checkins" onclick="switchView('checkins')">打卡</button>
             </nav>
 
-            <!-- Content area -->
             <div class="project-content" id="project-content">
                 <p class="team-empty" id="project-placeholder">
                     <span class="material-symbols-outlined" style="font-size:48px; color:var(--outline-variant); display:block; margin-bottom:12px;">account_tree</span>
-                    Select a project from the top bar to get started.
+                    从顶部栏选择一个项目开始。
                 </p>
                 <div id="project-view-container" style="display:none;"></div>
             </div>
         </main>
     </div>
 
+    <script src="site_language.js"></script>
     <script src="project_center.js"></script>
 </body>
 </html>

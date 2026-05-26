@@ -1,41 +1,41 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="zh-CN">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Circle - CampusMatch</title>
+    <title>圈子 - CampusMatch</title>
     <link rel="stylesheet" href="style.css">
 </head>
-<body class="dashboard-page-body">
+<body class="dashboard-page-body" data-cm-page="circle">
     <div class="cm-app-shell">
         <aside class="cm-sidebar">
             <a class="cm-brand" href="dashboard.html">
                 <span class="cm-brand-mark"><span class="material-symbols-outlined" style="font-variation-settings:'FILL' 1;">school</span></span>
                 <span>
                     <span class="cm-brand-title">CampusMatch</span>
-                    <span class="cm-brand-subtitle">Academic Workspace</span>
+                    <span class="cm-brand-subtitle">学术工作区</span>
                 </span>
             </a>
-            <nav class="cm-nav" aria-label="Workspace">
+            <nav class="cm-nav" aria-label="工作区">
                 <button class="cm-nav-link" type="button" onclick="window.location.href='dashboard.html'">
-                    <span class="material-symbols-outlined">dashboard</span> Dashboard
+                    <span class="material-symbols-outlined">dashboard</span> 首页
                 </button>
                 <button class="cm-nav-link" type="button" onclick="window.location.href='team_management.html'">
-                    <span class="material-symbols-outlined">account_tree</span> Projects
+                    <span class="material-symbols-outlined">account_tree</span> 项目
                 </button>
                 <button class="cm-nav-link active" type="button">
-                    <span class="material-symbols-outlined">groups</span> Community
+                    <span class="material-symbols-outlined">groups</span> 社区
                 </button>
                 <button class="cm-nav-link" type="button" onclick="window.location.href='messages.html'">
-                    <span class="material-symbols-outlined">chat</span> Messages
+                    <span class="material-symbols-outlined">chat</span> 消息
                 </button>
             </nav>
             <div class="cm-sidebar-footer">
                 <button class="cm-nav-link" type="button" onclick="window.location.href='profile.html'">
-                    <span class="material-symbols-outlined">account_circle</span> Profile
+                    <span class="material-symbols-outlined">account_circle</span> 个人主页
                 </button>
                 <button class="cm-nav-link" type="button" onclick="localStorage.removeItem('currentUser'); window.location.href='index.html';">
-                    <span class="material-symbols-outlined">logout</span> Log out
+                    <span class="material-symbols-outlined">logout</span> 退出登录
                 </button>
             </div>
         </aside>
@@ -44,18 +44,18 @@
             <header class="cm-topbar">
                 <div>
                     <div style="display:flex;align-items:center;gap:6px;font-size:13px;color:var(--outline);margin-bottom:2px;">
-                        <a href="community.html" style="color:var(--primary);text-decoration:none;font-weight:600;">Community</a>
+                        <a href="community.html" style="color:var(--primary);text-decoration:none;font-weight:600;">社区</a>
                         <span class="material-symbols-outlined" style="font-size:14px;">chevron_right</span>
-                        <a href="circles.html" style="color:var(--primary);text-decoration:none;font-weight:600;">Circles</a>
+                        <a href="circles.html" style="color:var(--primary);text-decoration:none;font-weight:600;">圈子</a>
                         <span class="material-symbols-outlined" style="font-size:14px;">chevron_right</span>
-                        <span id="circle-breadcrumb">Loading...</span>
+                        <span id="circle-breadcrumb">正在加载...</span>
                     </div>
-                    <h1 id="circle-title">Circle</h1>
-                    <p id="circle-desc" style="margin:0;">Loading circle details...</p>
+                    <h1 id="circle-title">圈子</h1>
+                    <p id="circle-desc" style="margin:0;">正在加载圈子详情...</p>
                 </div>
                 <div class="header-btns" id="admin-actions" style="display:none;">
                     <button class="cm-button" style="background:var(--error);color:#fff;" onclick="deleteCircle()">
-                        <span class="material-symbols-outlined">delete</span> Delete Circle
+                        <span class="material-symbols-outlined">delete</span> 删除圈子
                     </button>
                 </div>
             </header>
@@ -63,37 +63,41 @@
             <div class="dashboard-container" style="max-width:900px;">
                 <!-- Circle Info Bar -->
                 <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin-bottom:24px;" id="circle-info-bar">
-                    <span id="circle-post-count" style="font-weight:700;color:var(--primary);">0 posts</span>
+                    <span id="circle-post-count" style="font-weight:700;color:var(--primary);">0 条帖子</span>
                     <span style="color:var(--outline);">·</span>
                     <span id="circle-labels" style="display:flex;gap:6px;flex-wrap:wrap;"></span>
                 </div>
 
                 <!-- Compose -->
                 <div class="cm-glass-card" style="margin-bottom:24px;padding:20px;">
-                    <input id="compose-title" type="text" placeholder="Post title" style="width:100%;border:none;background:transparent;outline:none;font:inherit;font-weight:700;font-size:17px;margin-bottom:10px;">
-                    <textarea id="compose-content" rows="3" placeholder="Write a post in this circle..." style="width:100%;border:none;background:transparent;resize:none;outline:none;font:inherit;"></textarea>
+                    <input id="compose-title" type="text" placeholder="帖子标题" style="width:100%;border:none;background:transparent;outline:none;font:inherit;font-weight:700;font-size:17px;margin-bottom:10px;">
+                    <textarea id="compose-content" rows="3" placeholder="在这个圈子里发帖..." style="width:100%;border:none;background:transparent;resize:none;outline:none; font:inherit;"></textarea>
                     <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:10px;">
                         <button class="cm-button secondary" onclick="publishPost()">
-                            <span class="material-symbols-outlined">send</span> Post
+                            <span class="material-symbols-outlined">send</span> 发布
                         </button>
                     </div>
                 </div>
 
-                <!-- Posts Feed -->
                 <div id="circle-feed">
-                    <p class="cm-muted-message">Loading posts...</p>
+                    <p class="cm-muted-message">正在加载帖子...</p>
                 </div>
             </div>
         </main>
     </div>
 
+    <script src="site_language.js"></script>
     <script>
     const params = new URLSearchParams(window.location.search);
     const circleId = Number(params.get('id'));
     const currentUser = localStorage.getItem('currentUser') || '';
 
-    if (!circleId) { alert('No circle specified'); window.location.href = 'circles.html'; }
-    if (!currentUser) { alert('Please login first'); window.location.href = 'index.html'; }
+    function campusMatchLanguage() {
+        return window.getCampusMatchLanguage ? window.getCampusMatchLanguage() : ((localStorage.getItem('campusmatch-language') || 'zh') === 'en' ? 'en' : 'zh');
+    }
+
+    if (!circleId) { alert(campusMatchLanguage() === 'en' ? 'No circle specified' : '未指定圈子'); window.location.href = 'circles.html'; }
+    if (!currentUser) { alert(campusMatchLanguage() === 'en' ? 'Please login first' : '请先登录'); window.location.href = 'index.html'; }
 
     function esc(v) { return String(v || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
 
@@ -107,7 +111,7 @@
                     document.getElementById('circle-title').textContent = circle.name;
                     document.getElementById('circle-desc').textContent = circle.description || '';
                     document.getElementById('circle-breadcrumb').textContent = circle.name;
-                    document.getElementById('circle-post-count').textContent = `${circle.post_count || 0} posts`;
+                    document.getElementById('circle-post-count').textContent = `${circle.post_count || 0} 条帖子`;
                     const labels = (circle.labels || '').split(/[,，\s]+/).filter(Boolean);
                     document.getElementById('circle-labels').innerHTML = labels.map(l =>
                         `<span style="background:var(--surface-container-high);padding:2px 10px;border-radius:12px;font-size:12px;font-weight:600;">${esc(l)}</span>`
@@ -128,33 +132,33 @@
             const json = await resp.json();
             if (json.success) {
                 const posts = json.data || [];
-                if (!posts.length) { feed.innerHTML = '<p class="cm-muted-message">No posts yet. Be the first!</p>'; return; }
+                if (!posts.length) { feed.innerHTML = `<p class="cm-muted-message">${campusMatchLanguage() === 'en' ? 'No posts yet. Be the first!' : '还没有帖子，来发第一条吧！'}</p>`; return; }
                 feed.innerHTML = posts.map(p => {
                     const tags = Array.isArray(p.tags) ? p.tags : [];
                     const sourceLabel = p.source === 'tag_match'
-                        ? '<span style="font-size:11px;color:var(--secondary);background:rgba(16,185,129,0.1);padding:1px 8px;border-radius:8px;">Auto-matched</span>'
+                        ? `<span style="font-size:11px;color:var(--secondary);background:rgba(16,185,129,0.1);padding:1px 8px;border-radius:8px;">${campusMatchLanguage() === 'en' ? 'Auto-matched' : '自动匹配'}</span>`
                         : '';
                     return `
                         <div class="cm-glass-card" style="margin-bottom:14px;padding:18px;">
                             <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">
-                                <a href="profile.html?user=${encodeURIComponent(p.author || '')}" style="font-weight:700;color:var(--primary);text-decoration:none;">${esc(p.author || 'anonymous')}</a>
+                                <a href="profile.html?user=${encodeURIComponent(p.author || '')}" style="font-weight:700;color:var(--primary);text-decoration:none;">${esc(p.author || '匿名用户')}</a>
                                 ${sourceLabel}
                                 <span style="margin-left:auto;font-size:12px;color:var(--outline);">${(p.created_at || '').split('T')[0]}</span>
                             </div>
-                            <h3 style="margin:0 0 6px;font-size:17px;">${esc(p.title || '(no title)')}</h3>
+                            <h3 style="margin:0 0 6px;font-size:17px;">${esc(p.title || (campusMatchLanguage() === 'en' ? '(no title)' : '（无标题）'))}</h3>
                             <p style="margin:0 0 8px;color:var(--on-surface-variant);">${esc((p.content || '').slice(0, 200))}</p>
                             <div style="display:flex;gap:6px;flex-wrap:wrap;">${tags.map(t => `<span style="font-size:11px;background:var(--surface-container-high);padding:2px 8px;border-radius:8px;">${esc(t)}</span>`).join('')}</div>
                         </div>
                     `;
                 }).join('');
             }
-        } catch (_) { feed.innerHTML = '<p class="cm-muted-message">Failed to load posts</p>'; }
+        } catch (_) { feed.innerHTML = `<p class="cm-muted-message">${campusMatchLanguage() === 'en' ? 'Failed to load posts' : '帖子加载失败'}</p>`; }
     }
 
     async function publishPost() {
         const title = document.getElementById('compose-title').value.trim();
         const content = document.getElementById('compose-content').value.trim();
-        if (!title || !content) return alert('Please enter both title and content');
+        if (!title || !content) return alert(campusMatchLanguage() === 'en' ? 'Please enter both title and content' : '请输入标题和内容');
         try {
             const resp = await fetch('http://localhost:3000/api/community/posts', {
                 method: 'POST',
@@ -168,13 +172,13 @@
                 loadFeed();
                 loadCircle();
             } else {
-                alert(json.message || 'Failed to publish');
+                alert(json.message || (campusMatchLanguage() === 'en' ? 'Failed to publish' : '发布失败'));
             }
-        } catch (_) { alert('Network error'); }
+        } catch (_) { alert(campusMatchLanguage() === 'en' ? 'Network error' : '网络错误'); }
     }
 
     async function deleteCircle() {
-        if (!confirm('Delete this circle and ALL its posts? This cannot be undone.')) return;
+        if (!confirm(campusMatchLanguage() === 'en' ? 'Delete this circle and ALL its posts? This cannot be undone.' : '确定删除这个圈子及其全部帖子吗？此操作不可撤销。')) return;
         try {
             const resp = await fetch(`http://localhost:3000/api/circles/${circleId}`, {
                 method: 'DELETE',
@@ -183,12 +187,12 @@
             });
             const json = await resp.json();
             if (json.success) {
-                alert('Circle deleted');
+                alert(campusMatchLanguage() === 'en' ? 'Circle deleted' : '圈子已删除');
                 window.location.href = 'circles.html';
             } else {
-                alert(json.message || 'Failed to delete');
+                alert(json.message || (campusMatchLanguage() === 'en' ? 'Failed to delete' : '删除失败'));
             }
-        } catch (_) { alert('Network error'); }
+        } catch (_) { alert(campusMatchLanguage() === 'en' ? 'Network error' : '网络错误'); }
     }
 
     window.onload = function () {

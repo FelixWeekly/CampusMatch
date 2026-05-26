@@ -1,12 +1,12 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="zh-CN">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Circle Discovery - CampusMatch</title>
+    <title>圈子发现 - CampusMatch</title>
     <link rel="stylesheet" href="style.css">
 </head>
-<body class="dashboard-page-body">
+<body class="dashboard-page-body" data-cm-page="circles">
     <div class="cm-app-shell">
         <aside class="cm-sidebar">
             <a class="cm-brand" href="dashboard.html">
@@ -16,26 +16,26 @@
                     <span class="cm-brand-subtitle">Academic Workspace</span>
                 </span>
             </a>
-            <nav class="cm-nav" aria-label="Workspace">
+            <nav class="cm-nav" aria-label="工作区">
                 <button class="cm-nav-link" type="button" onclick="window.location.href='dashboard.html'">
-                    <span class="material-symbols-outlined">dashboard</span> Dashboard
+                    <span class="material-symbols-outlined">dashboard</span> 首页
                 </button>
                 <button class="cm-nav-link" type="button" onclick="window.location.href='team_management.html'">
-                    <span class="material-symbols-outlined">account_tree</span> Projects
+                    <span class="material-symbols-outlined">account_tree</span> 项目
                 </button>
                 <button class="cm-nav-link active" type="button">
-                    <span class="material-symbols-outlined">groups</span> Community
+                    <span class="material-symbols-outlined">groups</span> 社区
                 </button>
                 <button class="cm-nav-link" type="button" onclick="window.location.href='messages.html'">
-                    <span class="material-symbols-outlined">chat</span> Messages
+                    <span class="material-symbols-outlined">chat</span> 消息
                 </button>
             </nav>
             <div class="cm-sidebar-footer">
                 <button class="cm-nav-link" type="button" onclick="window.location.href='profile.html'">
-                    <span class="material-symbols-outlined">account_circle</span> Profile
+                    <span class="material-symbols-outlined">account_circle</span> 个人主页
                 </button>
                 <button class="cm-nav-link" type="button" onclick="localStorage.removeItem('currentUser'); window.location.href='index.html';">
-                    <span class="material-symbols-outlined">logout</span> Log out
+                    <span class="material-symbols-outlined">logout</span> 退出登录
                 </button>
             </div>
         </aside>
@@ -44,16 +44,16 @@
             <header class="cm-topbar">
                 <div>
                     <div style="display:flex;align-items:center;gap:6px;font-size:13px;color:var(--outline);margin-bottom:2px;">
-                        <a href="community.html" style="color:var(--primary);text-decoration:none;font-weight:600;">Community</a>
+                        <a href="community.html" style="color:var(--primary);text-decoration:none;font-weight:600;">社区</a>
                         <span class="material-symbols-outlined" style="font-size:14px;">chevron_right</span>
-                        <span>Circle Discovery</span>
+                        <span>圈子发现</span>
                     </div>
-                    <h1>Circle Discovery</h1>
-                    <p>Browse active circles, support proposals, and find your academic community.</p>
+                    <h1>圈子发现</h1>
+                    <p>浏览活跃圈子，支持提案，找到你的学术社群。</p>
                 </div>
                 <div class="header-btns">
                     <button class="cm-button" onclick="openProposeCircle()">
-                        <span class="material-symbols-outlined">add</span> Propose New Circle
+                        <span class="material-symbols-outlined">add</span> 发起新圈子
                     </button>
                 </div>
             </header>
@@ -63,16 +63,16 @@
                 <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin-bottom:24px;">
                     <div style="position:relative;flex:1;min-width:220px;">
                         <span class="material-symbols-outlined" style="position:absolute;left:14px;top:50%;transform:translateY(-50%);color:var(--outline);">search</span>
-                        <input id="circle-search" type="search" placeholder="Search circles..." oninput="renderCircles()" style="padding-left:44px;min-height:44px;">
+                        <input id="circle-search" type="search" placeholder="搜索圈子..." oninput="renderCircles()" style="padding-left:44px;min-height:44px;">
                     </div>
                 </div>
 
                 <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:28px;" id="category-filters">
-                    <button class="circle-filter active" data-cat="all" onclick="setCircleFilter('all', this)">All Circles</button>
-                    <button class="circle-filter" data-cat="Study" onclick="setCircleFilter('Study', this)">Study</button>
-                    <button class="circle-filter" data-cat="Technology" onclick="setCircleFilter('Technology', this)">Technology</button>
-                    <button class="circle-filter" data-cat="Social" onclick="setCircleFilter('Social', this)">Social</button>
-                    <button class="circle-filter" data-cat="Competitions" onclick="setCircleFilter('Competitions', this)">Competitions</button>
+                    <button class="circle-filter active" data-cat="all" onclick="setCircleFilter('all', this)">全部圈子</button>
+                    <button class="circle-filter" data-cat="Study" onclick="setCircleFilter('Study', this)">学习</button>
+                    <button class="circle-filter" data-cat="Technology" onclick="setCircleFilter('Technology', this)">技术</button>
+                    <button class="circle-filter" data-cat="Social" onclick="setCircleFilter('Social', this)">社交</button>
+                    <button class="circle-filter" data-cat="Competitions" onclick="setCircleFilter('Competitions', this)">竞赛</button>
                 </div>
 
                 <!-- Recommended Circles (AI) -->
@@ -80,7 +80,7 @@
                     <div class="cm-section-head" style="margin-bottom:16px;">
                         <div style="display:flex;align-items:center;gap:8px;">
                             <span class="material-symbols-outlined" style="color:var(--primary);">auto_awesome</span>
-                            <h2 style="margin:0;font-size:20px;font-weight:800;">Recommended For You</h2>
+                            <h2 style="margin:0;font-size:20px;font-weight:800;">为你推荐</h2>
                         </div>
                     </div>
                     <div class="circle-grid" id="recommended-circles-grid"></div>
@@ -91,11 +91,11 @@
                     <div class="cm-section-head" style="margin-bottom:16px;">
                         <div style="display:flex;align-items:center;gap:8px;">
                             <span class="material-symbols-outlined" style="color:var(--warning);">local_fire_department</span>
-                            <h2 style="margin:0;font-size:20px;font-weight:800;">All Circles</h2>
+                            <h2 style="margin:0;font-size:20px;font-weight:800;">全部圈子</h2>
                         </div>
                     </div>
                     <div class="circle-grid" id="active-circles-grid">
-                        <p class="cm-muted-message">Loading circles...</p>
+                        <p class="cm-muted-message">正在加载圈子...</p>
                     </div>
                 </section>
 
@@ -104,12 +104,12 @@
                     <div class="cm-section-head" style="margin-bottom:16px;">
                         <div style="display:flex;align-items:center;gap:8px;">
                             <span class="material-symbols-outlined" style="color:var(--secondary);">campaign</span>
-                            <h2 style="margin:0;font-size:20px;font-weight:800;">Circle Proposals</h2>
+                            <h2 style="margin:0;font-size:20px;font-weight:800;">圈子提案</h2>
                         </div>
                     </div>
-                    <p style="font-size:13px;color:var(--on-surface-variant);margin-bottom:16px;">Circles need community support to become active. Each proposal requires 10 supporters.</p>
+                    <p style="font-size:13px;color:var(--on-surface-variant);margin-bottom:16px;">圈子需要社区支持才能生效，每个提案需要 10 位支持者。</p>
                     <div id="proposals-list">
-                        <p class="cm-muted-message">Loading proposals...</p>
+                        <p class="cm-muted-message">正在加载提案...</p>
                     </div>
                 </section>
             </div>
@@ -119,27 +119,28 @@
     <!-- Propose Circle Modal -->
     <div id="propose-overlay" style="display:none;position:fixed;inset:0;z-index:100;background:rgba(18,28,42,0.4);align-items:center;justify-content:center;" onclick="if(event.target===this)closeProposeCircle()">
         <div class="animate-spring" style="width:min(480px,94vw);background:rgba(255,255,255,0.98);border-radius:16px;padding:28px;border:1px solid rgba(194,198,214,0.4);box-shadow:0 12px 40px rgba(15,23,42,0.1);">
-            <h3 style="margin:0 0 16px;font-size:20px;font-weight:800;">Propose New Circle</h3>
+            <h3 style="margin:0 0 16px;font-size:20px;font-weight:800;">发起新圈子</h3>
             <div class="field-stack">
-                <label class="form-label">Circle Name</label>
-                <input id="propose-name" type="text" placeholder="Enter circle name">
-                <label class="form-label">Category</label>
+                <label class="form-label">圈子名称</label>
+                <input id="propose-name" type="text" placeholder="请输入圈子名称">
+                <label class="form-label">分类</label>
                 <select id="propose-category">
-                    <option value="Study">Study</option>
-                    <option value="Technology">Technology</option>
-                    <option value="Social">Social</option>
-                    <option value="Competitions">Competitions</option>
+                    <option value="Study">学习</option>
+                    <option value="Technology">技术</option>
+                    <option value="Social">社会</option>
+                    <option value="Competitions">竞赛</option>
                 </select>
-                <label class="form-label">Description</label>
-                <textarea id="propose-desc" rows="3" placeholder="Describe the circle's purpose..."></textarea>
+                <label class="form-label">简介</label>
+                <textarea id="propose-desc" rows="3" placeholder="描述圈子的用途..."></textarea>
                 <div style="display:flex;gap:8px;justify-content:flex-end;">
-                    <button type="button" class="cm-button ghost" onclick="closeProposeCircle()">Cancel</button>
-                    <button type="button" class="cm-button secondary" onclick="submitProposal()">Start Proposal</button>
+                    <button type="button" class="cm-button ghost" onclick="closeProposeCircle()">取消</button>
+                    <button type="button" class="cm-button secondary" onclick="submitProposal()">发起提案</button>
                 </div>
             </div>
         </div>
     </div>
 
+    <script src="site_language.js"></script>
     <script src="circles.js"></script>
 </body>
 </html>

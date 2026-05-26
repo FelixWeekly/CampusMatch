@@ -12,6 +12,10 @@ function escapeHtml(value) {
         .replace(/'/g, '&#39;');
 }
 
+function campusMatchLanguage() {
+    return window.getCampusMatchLanguage ? window.getCampusMatchLanguage() : ((localStorage.getItem('campusmatch-language') || 'zh') === 'en' ? 'en' : 'zh');
+}
+
 window.onload = function() {
     if (!currentUser) {
         alert('请先登录！');
@@ -113,7 +117,7 @@ async function fetchProfileData() {
                 document.getElementById('btn-back-profile').style.display = 'none';
                 const delBtn = document.getElementById('btn-delete-account');
                 if (delBtn) delBtn.style.display = '';
-                btnContainer.innerHTML = `<button onclick="openEditModal()" style="width: 100%; background: var(--primary); color: var(--on-primary); padding: 12px; border-radius: var(--radius-sm); font-weight: 800;">Edit Profile</button>`;
+                btnContainer.innerHTML = `<button onclick="openEditModal()" style="width: 100%; background: var(--primary); color: var(--on-primary); padding: 12px; border-radius: var(--radius-sm); font-weight: 800;">${campusMatchLanguage() === 'en' ? 'Edit profile' : '编辑资料'}</button>`;
                 document.getElementById('edit-dept').value = u.department === '未设置院系' ? '' : u.department;
                 document.getElementById('edit-grade').value = u.grade === '未设置年级' ? '' : u.grade;
                 document.getElementById('edit-campus').value = u.campus || '沙河校区';
@@ -125,7 +129,7 @@ async function fetchProfileData() {
                 if (delBtn2) delBtn2.style.display = 'none';
                 btnContainer.innerHTML = `
                     <button onclick="window.location.href='messages.html?user=${encodeURIComponent(viewingUser)}'" style="width: 100%; background: var(--primary); color: var(--on-primary); padding: 12px; border-radius: var(--radius-sm); font-weight: 800;">
-                        <span class="material-symbols-outlined" style="vertical-align:middle; font-size:18px;">send</span> Send Message
+                        <span class="material-symbols-outlined" style="vertical-align:middle; font-size:18px;">send</span> ${campusMatchLanguage() === 'en' ? 'Send message' : '发消息'}
                     </button>
                 `;
             }
@@ -146,18 +150,18 @@ async function fetchProfileData() {
                             <div style="display: flex; justify-content: space-between; margin-bottom: 8px; align-items: center;">
                                 <div>
                                     <strong>${r.reviewer}</strong>
-                                    <span style="margin-left: 8px; color:#6b7280; font-size:12px;">项目 #${r.project_id}</span>
+                                    <span style="margin-left: 8px; color:#6b7280; font-size:12px;">${campusMatchLanguage() === 'en' ? 'Project #' : '项目 #'}${r.project_id}</span>
                                 </div>
                                 <span class="stars">${starsStr}</span>
                             </div>
-                            <p style="color: #4b5563; font-size: 14px; margin: 0 0 8px 0;">${r.comment || '无评语'}</p>
-                            <p style="color:#111827; font-size:13px; margin:0;">客观分 ${objectiveText} + 主观分 ${subjectiveText} => 总分 ${finalScoreText}</p>
+                            <p style="color: #4b5563; font-size: 14px; margin: 0 0 8px 0;">${r.comment || (campusMatchLanguage() === 'en' ? 'No comment' : '无评语')}</p>
+                            <p style="color:#111827; font-size:13px; margin:0;">${campusMatchLanguage() === 'en' ? 'Objective' : '客观分'} ${objectiveText} + ${campusMatchLanguage() === 'en' ? 'Subjective' : '主观分'} ${subjectiveText} => ${campusMatchLanguage() === 'en' ? 'Total' : '总分'} ${finalScoreText}</p>
                             <p style="color: #9ca3af; font-size: 12px; margin-top: 8px;">${r.created_at}</p>
                         </div>
                     `;
                 });
             } else {
-                reviewsList.innerHTML = '<p style="color: #9ca3af; text-align: center; padding: 20px;">暂无任务结项评价</p>';
+                reviewsList.innerHTML = `<p style="color: #9ca3af; text-align: center; padding: 20px;">${campusMatchLanguage() === 'en' ? 'No project closure reviews yet.' : '暂无任务结项评价'}</p>`;
             }
 
             const ongoingBox = document.getElementById('ongoing-activities');
@@ -218,11 +222,15 @@ async function saveProfile() {
         });
         const data = await res.json();
         if (data.success) {
-            alert('保存成功！');
+            alert(campusMatchLanguage() === 'en' ? 'Saved successfully!' : '保存成功！');
             closeModal('edit-modal');
             fetchProfileData(); // 刷新页面数据
+        } else {
+            alert(campusMatchLanguage() === 'en' ? 'Save failed!' : '保存失败！');
         }
-    } catch (err) { alert('保存失败！'); }
+    } catch (err) {
+        alert(campusMatchLanguage() === 'en' ? 'Save failed!' : '保存失败！');
+    }
 }
 
 // Private messaging → navigate to messages.html?user= (see send message button in fetchProfileData)
@@ -257,7 +265,7 @@ async function submitDeleteAccount() {
     const user = localStorage.getItem('currentUser');
     if (!user) return;
     const confirmed = document.getElementById('delete-confirm')?.checked;
-    if (!confirmed) return alert('Please confirm you understand this is irreversible.');
+    if (!confirmed) return alert(campusMatchLanguage() === 'en' ? 'Please confirm that you understand this action is irreversible.' : '请确认你已了解此操作不可逆。');
 
     const checkboxes = document.querySelectorAll('#delete-overlay input[type="checkbox"]:checked');
     const reasons = [];
@@ -272,14 +280,14 @@ async function submitDeleteAccount() {
         });
         const json = await resp.json();
         if (json.success) {
-            alert('Your account has been deleted. Goodbye!');
+            alert(campusMatchLanguage() === 'en' ? 'Your account has been deleted. Goodbye!' : '账号已删除，期待再见。');
             localStorage.removeItem('currentUser');
             window.location.href = 'index.html';
         } else {
-            alert(json.message || 'Deletion failed');
+            alert(json.message || (campusMatchLanguage() === 'en' ? 'Deletion failed' : '删除失败'));
         }
     } catch (_) {
-        alert('Network error. Please try again.');
+        alert(campusMatchLanguage() === 'en' ? 'Network error. Please try again.' : '网络错误，请重试。');
     }
 }
 
@@ -304,7 +312,7 @@ async function loadUserAvatar(userName) {
 function uploadAvatar(event) {
     const file = event.target.files && event.target.files[0];
     if (!file) return;
-    if (file.size > 256 * 1024) return alert('Image must be under 256KB');
+    if (file.size > 256 * 1024) return alert(campusMatchLanguage() === 'en' ? 'Image must be under 256KB' : '图片需小于 256KB');
 
     const reader = new FileReader();
     reader.onload = async function() {
@@ -322,9 +330,9 @@ function uploadAvatar(event) {
                 if (img) { img.src = reader.result; img.style.display = ''; }
                 if (icon) icon.style.display = 'none';
             } else {
-                alert(json.message || 'Upload failed');
+                alert(json.message || (campusMatchLanguage() === 'en' ? 'Upload failed' : '上传失败'));
             }
-        } catch (_) { alert('Network error'); }
+        } catch (_) { alert(campusMatchLanguage() === 'en' ? 'Network error' : '网络错误'); }
     };
     reader.readAsDataURL(file);
 }

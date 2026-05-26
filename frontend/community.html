@@ -3,10 +3,10 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Community Plaza - CampusMatch</title>
+    <title>社区 - CampusMatch</title>
     <link rel="stylesheet" href="style.css">
 </head>
-<body class="dashboard-page-body">
+<body class="dashboard-page-body" data-cm-page="community">
     <div class="cm-app-shell">
         <aside class="cm-sidebar">
             <a class="cm-brand" href="dashboard.html">
@@ -16,26 +16,26 @@
                     <span class="cm-brand-subtitle">Academic Workspace</span>
                 </span>
             </a>
-            <nav class="cm-nav" aria-label="Workspace">
+            <nav class="cm-nav" aria-label="工作区">
                 <button class="cm-nav-link" type="button" onclick="window.location.href='dashboard.html'">
-                    <span class="material-symbols-outlined">dashboard</span> Dashboard
+                    <span class="material-symbols-outlined">dashboard</span> 首页
                 </button>
                 <button class="cm-nav-link" type="button" onclick="window.location.href='team_management.html'">
-                    <span class="material-symbols-outlined">account_tree</span> Projects
+                    <span class="material-symbols-outlined">account_tree</span> 项目
                 </button>
                 <button class="cm-nav-link active" type="button">
-                    <span class="material-symbols-outlined">groups</span> Community
+                    <span class="material-symbols-outlined">groups</span> 社区
                 </button>
                 <button class="cm-nav-link" type="button" onclick="window.location.href='messages.html'">
-                    <span class="material-symbols-outlined">chat</span> Messages
+                    <span class="material-symbols-outlined">chat</span> 消息
                 </button>
             </nav>
             <div class="cm-sidebar-footer">
                 <button class="cm-nav-link" type="button" onclick="window.location.href='profile.html'">
-                    <span class="material-symbols-outlined">account_circle</span> Profile
+                    <span class="material-symbols-outlined">account_circle</span> 个人主页
                 </button>
                 <button class="cm-nav-link" type="button" onclick="localStorage.removeItem('currentUser'); window.location.href='index.html';">
-                    <span class="material-symbols-outlined">logout</span> Log out
+                    <span class="material-symbols-outlined">logout</span> 退出登录
                 </button>
             </div>
         </aside>
@@ -43,12 +43,12 @@
         <main class="cm-main">
             <header class="cm-topbar">
                 <div>
-                    <h1 id="community-welcome">Community Plaza</h1>
-                    <p>Share updates, discover circles, and connect with peers.</p>
+                    <h1 id="community-welcome">社区广场</h1>
+                    <p>分享动态、发现圈子，并和同伴连接。</p>
                 </div>
                 <div class="header-btns">
                     <button class="cm-button ghost" type="button" onclick="refreshCommunityData()">
-                        <span class="material-symbols-outlined">refresh</span> Refresh
+                        <span class="material-symbols-outlined">refresh</span> 刷新
                     </button>
                 </div>
             </header>
@@ -64,7 +64,7 @@
                                     <span class="material-symbols-outlined">person</span>
                                 </div>
                                 <div class="cm-composer-input" onclick="toggleComposer()" id="composer-trigger">
-                                    <span class="cm-composer-placeholder">Share an update, paper, or thought...</span>
+                                    <span class="cm-composer-placeholder">分享动态、论文或想法...</span>
                                     <span class="material-symbols-outlined" style="color:var(--outline);">share</span>
                                 </div>
                             </div>
@@ -74,18 +74,18 @@
                                 <div class="field-stack">
                                     <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px;">
                                         <select id="community-post-circle">
-                                            <option value="">Public post</option>
+                                            <option value="">公开发布</option>
                                         </select>
                                         <select id="community-post-project">
-                                            <option value="">Link to project (optional)</option>
+                                            <option value="">关联项目（可选）</option>
                                         </select>
                                     </div>
-                                    <input id="community-post-title" type="text" placeholder="Post title">
-                                    <textarea id="community-post-content" rows="4" placeholder="What's on your mind?"></textarea>
+                                    <input id="community-post-title" type="text" placeholder="帖子标题">
+                                    <textarea id="community-post-content" rows="4" placeholder="想说点什么？"></textarea>
                                     <div style="display:flex; justify-content:flex-end; gap:8px;">
-                                        <button type="button" class="cm-button ghost" onclick="toggleComposer()">Cancel</button>
+                                        <button type="button" class="cm-button ghost" onclick="toggleComposer()">取消</button>
                                         <button type="button" class="btn-publish" onclick="createCommunityPost()">
-                                            <span class="material-symbols-outlined">send</span> Publish
+                                            <span class="material-symbols-outlined">send</span> 发布
                                         </button>
                                     </div>
                                 </div>
@@ -94,7 +94,7 @@
 
                         <!-- Feed Posts -->
                         <div id="community-posts-container">
-                            <p class="cm-muted-message">Loading community content...</p>
+                            <p class="cm-muted-message">正在加载社区内容...</p>
                         </div>
 
                     </div>
@@ -104,26 +104,26 @@
                         <!-- Circle Discovery entry -->
                         <div class="cm-sidebar-card" style="text-align:center;">
                             <span class="material-symbols-outlined" style="font-size:40px;color:var(--primary);display:block;margin-bottom:8px;">groups</span>
-                            <h3 style="margin-bottom:6px;">Circle Discovery</h3>
-                            <p style="font-size:13px;color:var(--on-surface-variant);margin-bottom:14px;">Browse active circles, support proposals, and join the conversation.</p>
+                            <h3 style="margin-bottom:6px;">圈子发现</h3>
+                            <p style="font-size:13px;color:var(--on-surface-variant);margin-bottom:14px;">浏览活跃圈子，支持提案，并加入讨论。</p>
                             <button class="cm-button" onclick="window.location.href='circles.html'" style="width:100%;">
-                                <span class="material-symbols-outlined">explore</span> Explore Circles
+                                <span class="material-symbols-outlined">explore</span> 浏览圈子
                             </button>
                         </div>
 
                         <!-- Community Recommendations -->
                         <div class="cm-sidebar-card">
-                            <h3>Recommended for you</h3>
+                            <h3>为你推荐</h3>
                             <div id="community-recommendation-container">
-                                <span class="cm-muted-message">Calculating...</span>
+                                <span class="cm-muted-message">计算中...</span>
                             </div>
                         </div>
 
                         <!-- Trending Topics -->
                         <div class="cm-sidebar-card">
-                            <h3>Trending Topics</h3>
+                            <h3>热门话题</h3>
                             <div id="community-trending-container">
-                                <p class="cm-muted-message">Loading trends...</p>
+                                <p class="cm-muted-message">正在加载趋势...</p>
                             </div>
                         </div>
                     </div>
@@ -132,6 +132,7 @@
         </main>
     </div>
 
+    <script src="site_language.js"></script>
     <script src="community.js"></script>
 </body>
 </html>

@@ -2,10 +2,14 @@ let messageThreads = [];
 let activePeer = '';
 let threadFilter = 'user'; // 'user' | 'project'
 
+function campusMatchLanguage() {
+    return window.getCampusMatchLanguage ? window.getCampusMatchLanguage() : ((localStorage.getItem('campusmatch-language') || 'zh') === 'en' ? 'en' : 'zh');
+}
+
 window.addEventListener('load', () => {
     const currentUser = localStorage.getItem('currentUser');
     if (!currentUser) {
-        alert('请先登录');
+        alert(campusMatchLanguage() === 'en' ? 'Please log in first.' : '请先登录');
         window.location.href = 'index.html';
         return;
     }
@@ -48,9 +52,11 @@ function setThreadFilter(filter, btn) {
         const peerType = String(activePeer).startsWith('project:') ? 'project' : 'user';
         if (peerType !== filter) {
             activePeer = '';
-            document.getElementById('conversation-title').textContent = 'Select a chat';
-            document.getElementById('conversation-status').textContent = filter === 'project' ? 'Project channels' : 'Direct messages';
-            document.getElementById('conversation-history').innerHTML = '<p class="muted" style="text-align:center;">Choose a conversation from the left.</p>';
+            document.getElementById('conversation-title').textContent = campusMatchLanguage() === 'en' ? 'Select a conversation' : '选择会话';
+            document.getElementById('conversation-status').textContent = filter === 'project'
+                ? (campusMatchLanguage() === 'en' ? 'Project channel' : '项目频道')
+                : (campusMatchLanguage() === 'en' ? 'Direct message' : '私信');
+            document.getElementById('conversation-history').innerHTML = `<p class="muted" style="text-align:center;">${campusMatchLanguage() === 'en' ? 'Choose a conversation from the left.' : '请从左侧选择一个会话。'}</p>`;
         }
     }
 }
@@ -58,13 +64,13 @@ function setThreadFilter(filter, btn) {
 async function loadThreads() {
     const currentUser = localStorage.getItem('currentUser');
     const list = document.getElementById('thread-list');
-    if (list) list.innerHTML = '<p class="muted" style="padding:18px;">Loading chats...</p>';
+    if (list) list.innerHTML = `<p class="muted" style="padding:18px;">${campusMatchLanguage() === 'en' ? 'Loading conversations...' : '正在加载会话...'}</p>`;
 
     try {
         const response = await fetch(`http://localhost:3000/api/message-threads?user=${encodeURIComponent(currentUser)}`);
         const data = await response.json();
         if (!data.success) {
-            list.innerHTML = `<p class="muted" style="padding:18px;">${data.message || 'Unable to load chats.'}</p>`;
+            list.innerHTML = `<p class="muted" style="padding:18px;">${data.message || (campusMatchLanguage() === 'en' ? 'Unable to load conversations.' : '无法加载会话。')}</p>`;
             return;
         }
 
@@ -75,7 +81,7 @@ async function loadThreads() {
             if (filtered[0]) openConversation(filtered[0].peer);
         }
     } catch (error) {
-        list.innerHTML = '<p class="muted" style="padding:18px;">Network error. Please check the backend service.</p>';
+        list.innerHTML = `<p class="muted" style="padding:18px;">${campusMatchLanguage() === 'en' ? 'Network error. Please check the backend service.' : '网络错误，请检查后端服务。'}</p>`;
     }
 }
 
@@ -93,7 +99,7 @@ function renderThreads() {
     const filtered = filterThreads();
 
     if (!filtered.length) {
-        list.innerHTML = '<p class="muted" style="padding:18px;">No chats yet.</p>';
+        list.innerHTML = `<p class="muted" style="padding:18px;">${campusMatchLanguage() === 'en' ? 'No conversations yet.' : '还没有会话。'}</p>`;
         return;
     }
 
@@ -115,7 +121,7 @@ function renderThreads() {
                 ${avatarNode}
                 <span class="thread-main">
                     <strong>${escapeHtml(displayName)}</strong>
-                    <span>${escapeHtml(thread.last_message || 'No message preview')}</span>
+                    <span>${escapeHtml(thread.last_message || (campusMatchLanguage() === 'en' ? 'No preview' : '暂无预览'))}</span>
                 </span>
                 <span class="thread-meta">${formatTime(thread.last_at)}${unread}</span>
             </button>
@@ -147,22 +153,24 @@ async function openConversation(peer) {
         avContainer.textContent = isProject ? 'P' : avatarInitial(peer);
         initAvatars();
     }
-    document.getElementById('conversation-status').textContent = isProject ? 'Project channel' : 'Direct message';
+    document.getElementById('conversation-status').textContent = isProject
+        ? (campusMatchLanguage() === 'en' ? 'Project channel' : '项目频道')
+        : (campusMatchLanguage() === 'en' ? 'Direct message' : '私信');
 
     const history = document.getElementById('conversation-history');
-    history.innerHTML = '<p class="muted" style="text-align:center;">Loading conversation...</p>';
+    history.innerHTML = `<p class="muted" style="text-align:center;">${campusMatchLanguage() === 'en' ? 'Loading conversation...' : '正在加载会话...'}</p>`;
 
     const currentUser = localStorage.getItem('currentUser');
     try {
         const response = await fetch(`http://localhost:3000/api/conversation?user=${encodeURIComponent(currentUser)}&with=${encodeURIComponent(peer)}`);
         const data = await response.json();
         if (!data.success) {
-            history.innerHTML = `<p class="muted" style="text-align:center;">${data.message || 'Unable to load conversation.'}</p>`;
+            history.innerHTML = `<p class="muted" style="text-align:center;">${data.message || (campusMatchLanguage() === 'en' ? 'Unable to load conversation.' : '无法加载会话。')}</p>`;
             return;
         }
         renderConversation(data.data || []);
     } catch (error) {
-        history.innerHTML = '<p class="muted" style="text-align:center;">Network error.</p>';
+        history.innerHTML = `<p class="muted" style="text-align:center;">${campusMatchLanguage() === 'en' ? 'Network error.' : '网络错误。'}</p>`;
     }
 }
 
@@ -170,7 +178,7 @@ function renderConversation(messages) {
     const currentUser = localStorage.getItem('currentUser');
     const history = document.getElementById('conversation-history');
     if (!messages.length) {
-        history.innerHTML = '<p class="muted" style="text-align:center;">No messages yet. Send the first one!</p>';
+        history.innerHTML = `<p class="muted" style="text-align:center;">${campusMatchLanguage() === 'en' ? 'No messages yet. Send the first one!' : '还没有消息，先发一条吧！'}</p>`;
         return;
     }
 
@@ -206,12 +214,12 @@ async function sendMessage() {
             body: JSON.stringify({ sender: currentUser, recipient: activePeer, message: text })
         });
         const data = await response.json();
-        if (!data.success) return alert(data.message || '发送失败');
+        if (!data.success) return alert(data.message || (campusMatchLanguage() === 'en' ? 'Send failed' : '发送失败'));
         input.value = '';
         await openConversation(activePeer);
         await loadThreads();
     } catch (error) {
-        alert('网络错误，发送失败');
+        alert(campusMatchLanguage() === 'en' ? 'Network error. Send failed.' : '网络错误，发送失败');
     }
 }
 

@@ -1,18 +1,26 @@
 window.onload = function() {
     const currentUser = localStorage.getItem('currentUser');
     if (!currentUser) {
-        alert('请先登录！');
+        alert(communityCopy('请先登录！', 'Please log in first.'));
         window.location.href = 'index.html';
         return;
     }
 
     const welcome = document.getElementById('community-welcome');
-    if (welcome) welcome.innerText = `Community Plaza`;
+    if (welcome) welcome.innerText = communityCopy('社区广场', 'Community Plaza');
     refreshCommunityData();
     loadTrendingTopics();
 };
 
 let communityCircles = [];
+
+function communityLanguage() {
+    return window.getCampusMatchLanguage ? window.getCampusMatchLanguage() : ((localStorage.getItem('campusmatch-language') || 'zh') === 'en' ? 'en' : 'zh');
+}
+
+function communityCopy(zh, en) {
+    return communityLanguage() === 'en' ? en : zh;
+}
 
 function communityEscape(value) {
     return String(value || '')
@@ -99,7 +107,7 @@ async function loadProjectOptions() {
     try {
         const resp = await fetch(`http://localhost:3000/api/my-projects?user=${encodeURIComponent(currentUser || '')}`);
         const json = await resp.json();
-        select.innerHTML = '<option value="">Link to project (optional)</option>';
+        select.innerHTML = `<option value="">${communityCopy('关联项目（可选）', 'Link to project (optional)')}</option>`;
         if (json.success && json.data) {
             json.data.forEach((p) => {
                 select.innerHTML += `<option value="${p.id}">${communityEscape(p.title || 'Untitled')}</option>`;
@@ -118,7 +126,7 @@ async function loadCircleOptions() {
         const data = await response.json();
         if (data.success) {
             communityCircles = data.data || [];
-            postCircleSelect.innerHTML = '<option value="">Public post (no circle)</option>';
+            postCircleSelect.innerHTML = `<option value="">${communityCopy('直接发布', 'Post directly')}</option>`;
             communityCircles.forEach((circle) => {
                 postCircleSelect.innerHTML += `<option value="${circle.id}">${communityEscape(circle.name)}</option>`;
             });
@@ -133,7 +141,7 @@ async function createCommunityPost() {
     const title = document.getElementById('community-post-title')?.value?.trim() || '';
     const content = document.getElementById('community-post-content')?.value?.trim() || '';
 
-    if (!title || !content) return alert('标题和内容不能为空');
+    if (!title || !content) return alert(communityCopy('标题和内容不能为空', 'Title and content are required'));
 
     try {
         const response = await fetch('http://localhost:3000/api/community/posts', {
@@ -148,7 +156,7 @@ async function createCommunityPost() {
             })
         });
         const data = await response.json();
-        if (!data.success) return alert(data.message || '发布失败');
+        if (!data.success) return alert(data.message || communityCopy('发布失败', 'Failed to publish'));
 
         document.getElementById('community-post-project').value = '';
         document.getElementById('community-post-title').value = '';
@@ -156,9 +164,9 @@ async function createCommunityPost() {
         toggleComposer();
         await loadCommunityRecommendations();
         await loadCommunityPosts();
-        alert('发布成功');
+        alert(communityCopy('发布成功', 'Posted successfully'));
     } catch (err) {
-        alert('网络错误，发布失败');
+        alert(communityCopy('网络错误，发布失败', 'Network error. Failed to publish'));
     }
 }
 
@@ -167,20 +175,20 @@ async function loadCommunityPosts() {
     const container = document.getElementById('community-posts-container');
     if (!container) return;
 
-    container.innerHTML = '<p class="cm-muted-message">Loading feed...</p>';
+    container.innerHTML = `<p class="cm-muted-message">${communityCopy('正在加载社区内容...', 'Loading community content...')}</p>`;
 
     try {
         const query = new URLSearchParams({ user: currentUser || '', limit: '30' });
         const response = await fetch(`http://localhost:3000/api/community/posts?${query.toString()}`);
         const data = await response.json();
         if (!data.success) {
-            container.innerHTML = `<p class="cm-error-message">${data.message || '社区加载失败'}</p>`;
+            container.innerHTML = `<p class="cm-error-message">${data.message || communityCopy('社区加载失败', 'Failed to load community content')}</p>`;
             return;
         }
 
         const posts = data.data || [];
         if (!posts.length) {
-            container.innerHTML = '<p class="cm-muted-message">No posts yet. Be the first to share!</p>';
+            container.innerHTML = `<p class="cm-muted-message">${communityCopy('还没有帖子，来分享第一条吧！', 'No posts yet. Be the first to share!')}</p>`;
             return;
         }
 
@@ -195,7 +203,7 @@ async function loadCommunityPosts() {
             const projectEmbed = post.project_id
                 ? `<div class="cm-feed-card-project" onclick="window.location.href='team_management.html?project=${post.project_id}'">
                     <span class="material-symbols-outlined" style="color:var(--secondary);">account_tree</span>
-                    <span style="font-size:12px;font-weight:700;">Associated Project</span>
+                    <span style="font-size:12px;font-weight:700;">${communityCopy('关联项目', 'Linked project')}</span>
                    </div>`
                 : '';
 
@@ -207,11 +215,11 @@ async function loadCommunityPosts() {
                             <div class="cm-feed-card-meta">
                                 <a href="profile.html?user=${encodeURIComponent(post.author || '')}" style="color:var(--on-surface);text-decoration:none;font-weight:700;">${communityEscape(post.author)}</a>
                                 <span class="cm-feed-card-info">
-                                    ${post.circle_name ? `in ${communityEscape(post.circle_name)}` : 'Public'} · ${communityEscape(post.created_at || '')}
+                                    ${post.circle_name ? `${communityCopy('来自', 'From')} ${communityEscape(post.circle_name)}` : communityCopy('公开', 'Public')} · ${communityEscape(post.created_at || '')}
                                 </span>
                             </div>
                         </div>
-                        ${isOwn ? `<button onclick="deleteCommunityPost(${post.id})" class="cm-feed-action" style="color:var(--error);margin-left:auto;" title="Delete">✕</button>` : ''}
+                        ${isOwn ? `<button onclick="deleteCommunityPost(${post.id})" class="cm-feed-action" style="color:var(--error);margin-left:auto;" title="${communityCopy('删除', 'Delete')}">✕</button>` : ''}
                     </div>
                     <div class="cm-feed-card-title">${communityEscape(post.title)}</div>
                     <div class="cm-feed-card-body">${communityEscape(post.content).replace(/\n/g, '<br>')}</div>
@@ -223,14 +231,14 @@ async function loadCommunityPosts() {
                         </button>
                         <button onclick="toggleInlineComments(${post.id})" class="cm-feed-action">
                             <span class="material-symbols-outlined">chat_bubble</span>
-                            ${post.comments_count || 0} Comments
+                            ${post.comments_count || 0} ${communityCopy('条评论', 'comments')}
                         </button>
                     </div>
                     <div class="cm-inline-comments" id="inline-comments-${post.id}" style="display:none; border-top:1px solid rgba(194,198,214,.3); margin-top:12px; padding-top:12px;">
                         <div class="cm-inline-comments-list" id="inline-list-${post.id}"></div>
                         <div style="display:flex; gap:8px; margin-top:8px;">
-                            <input id="inline-input-${post.id}" type="text" placeholder="Write a comment..." style="flex:1; padding:6px 10px; border:1px solid rgba(194,198,214,.4); border-radius:8px; font:inherit; font-size:13px;" onkeydown="if(event.key==='Enter')submitInlineComment(${post.id})">
-                            <button onclick="submitInlineComment(${post.id})" class="cm-button" style="font-size:12px; padding:6px 14px;">Send</button>
+                            <input id="inline-input-${post.id}" type="text" placeholder="${communityCopy('写下评论...', 'Write a comment...')}" style="flex:1; padding:6px 10px; border:1px solid rgba(194,198,214,.4); border-radius:8px; font:inherit; font-size:13px;" onkeydown="if(event.key==='Enter')submitInlineComment(${post.id})">
+                            <button onclick="submitInlineComment(${post.id})" class="cm-button" style="font-size:12px; padding:6px 14px;">${communityCopy('发送', 'Send')}</button>
                         </div>
                     </div>
                 </article>
@@ -242,7 +250,7 @@ async function loadCommunityPosts() {
         });
         initAvatars();
     } catch (err) {
-        container.innerHTML = '<p class="cm-error-message">Network error loading feed</p>';
+        container.innerHTML = `<p class="cm-error-message">${communityCopy('加载社区内容时发生网络错误', 'Network error while loading community content')}</p>`;
     }
 }
 
@@ -251,13 +259,13 @@ async function loadCommunityRecommendations() {
     const container = document.getElementById('community-recommendation-container');
     if (!container) return;
 
-    container.innerHTML = '<span class="cm-muted-message">Calculating...</span>';
+    container.innerHTML = `<span class="cm-muted-message">${communityCopy('计算中...', 'Calculating...')}</span>`;
 
     try {
         const response = await fetch(`http://localhost:3000/api/circles/recommendations?user=${encodeURIComponent(currentUser)}&limit=3`);
         const data = await response.json();
         if (!data.success || !data.data || !data.data.length) {
-            container.innerHTML = '<span class="cm-muted-message">No circle recommendations yet</span>';
+            container.innerHTML = `<span class="cm-muted-message">${communityCopy('暂无圈子推荐', 'No circle recommendations yet')}</span>`;
             return;
         }
 
@@ -272,7 +280,7 @@ async function loadCommunityRecommendations() {
             `;
         }).join('');
     } catch (err) {
-        container.innerHTML = '<span class="cm-error-message">Network error</span>';
+        container.innerHTML = `<span class="cm-error-message">${communityCopy('网络错误', 'Network error')}</span>`;
     }
 }
 
@@ -285,7 +293,7 @@ async function loadTrendingTopics() {
         const response = await fetch('http://localhost:3000/api/trending-topics?limit=3');
         const data = await response.json();
         if (!data.success || !data.data || !data.data.length) {
-            container.innerHTML = '<p class="cm-muted-message">No trends yet</p>';
+            container.innerHTML = `<p class="cm-muted-message">${communityCopy('暂无趋势', 'No trends yet')}</p>`;
             return;
         }
 
@@ -300,12 +308,12 @@ async function loadTrendingTopics() {
             </div>
         `).join('');
     } catch (_) {
-        container.innerHTML = '<p class="cm-muted-message">Trends unavailable</p>';
+        container.innerHTML = `<p class="cm-muted-message">${communityCopy('趋势不可用', 'Trends unavailable')}</p>`;
     }
 }
 
 async function deleteCommunityPost(postId) {
-    if (!confirm('Delete this post?')) return;
+    if (!confirm(communityCopy('确定删除这条帖子吗？', 'Delete this post?'))) return;
     const currentUser = localStorage.getItem('currentUser');
     try {
         const resp = await fetch('http://localhost:3000/api/community/posts/' + postId, {
@@ -315,8 +323,8 @@ async function deleteCommunityPost(postId) {
         });
         const data = await resp.json();
         if (data.success) loadCommunityPosts();
-        else alert(data.message || 'Failed');
-    } catch (_) { alert('Network error'); }
+        else alert(data.message || communityCopy('失败', 'Failed'));
+    } catch (_) { alert(communityCopy('网络错误', 'Network error')); }
 }
 
 async function toggleCommunityLike(postId) {
@@ -328,10 +336,10 @@ async function toggleCommunityLike(postId) {
             body: JSON.stringify({ user: currentUser })
         });
         const data = await response.json();
-        if (!data.success) return alert(data.message || '点赞失败');
+        if (!data.success) return alert(data.message || communityCopy('点赞失败', 'Failed to like'));
         await loadCommunityPosts();
     } catch (err) {
-        alert('网络错误，点赞失败');
+        alert(communityCopy('网络错误，点赞失败', 'Network error. Failed to like'));
     }
 }
 
@@ -349,13 +357,13 @@ async function toggleInlineComments(postId) {
 async function loadInlineComments(postId) {
     const list = document.getElementById('inline-list-' + postId);
     if (!list) return;
-    list.innerHTML = '<p class="cm-muted-message">Loading...</p>';
+    list.innerHTML = `<p class="cm-muted-message">${communityCopy('加载中...', 'Loading...')}</p>`;
     try {
         const resp = await fetch('http://localhost:3000/api/community/posts/' + postId + '/comments?limit=80');
         const data = await resp.json();
-        if (!data.success) { list.innerHTML = '<p class="cm-muted-message">Failed</p>'; return; }
+        if (!data.success) { list.innerHTML = `<p class="cm-muted-message">${communityCopy('加载失败', 'Failed to load')}</p>`; return; }
         const comments = data.data || [];
-        if (!comments.length) { list.innerHTML = '<p class="cm-muted-message">No comments yet</p>'; return; }
+        if (!comments.length) { list.innerHTML = `<p class="cm-muted-message">${communityCopy('暂无评论', 'No comments yet')}</p>`; return; }
         list.innerHTML = comments.map(c => `
             <div style="padding:6px 0; border-bottom:1px solid rgba(194,198,214,.15);">
                 <strong>${communityEscape(c.author)}</strong>
@@ -363,7 +371,7 @@ async function loadInlineComments(postId) {
                 <div style="margin-top:2px;">${communityEscape(c.content)}</div>
             </div>
         `).join('');
-    } catch (_) { list.innerHTML = '<p class="cm-muted-message">Error</p>'; }
+    } catch (_) { list.innerHTML = `<p class="cm-muted-message">${communityCopy('加载失败', 'Failed to load')}</p>`; }
 }
 
 async function submitInlineComment(postId) {
@@ -381,6 +389,6 @@ async function submitInlineComment(postId) {
         if (data.success) {
             if (input) input.value = '';
             await loadInlineComments(postId);
-        } else { alert(data.message || 'Failed'); }
-    } catch (_) { alert('Network error'); }
+        } else { alert(data.message || '失败'); }
+    } catch (_) { alert('网络错误'); }
 }

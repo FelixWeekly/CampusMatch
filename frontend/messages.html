@@ -3,10 +3,10 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Messages - CampusMatch</title>
+    <title>消息 - CampusMatch</title>
     <link rel="stylesheet" href="style.css">
 </head>
-<body class="dashboard-page-body">
+<body class="dashboard-page-body" data-cm-page="messages">
     <div class="cm-app-shell">
         <aside class="cm-sidebar">
             <a class="cm-brand" href="dashboard.html">
@@ -16,26 +16,26 @@
                     <span class="cm-brand-subtitle">Academic Workspace</span>
                 </span>
             </a>
-            <nav class="cm-nav" aria-label="Workspace">
+            <nav class="cm-nav" aria-label="工作区">
                 <button class="cm-nav-link" type="button" onclick="window.location.href='dashboard.html'">
-                    <span class="material-symbols-outlined">dashboard</span> Dashboard
+                    <span class="material-symbols-outlined">dashboard</span> 首页
                 </button>
                 <button class="cm-nav-link" type="button" onclick="window.location.href='team_management.html'">
-                    <span class="material-symbols-outlined">account_tree</span> Projects
+                    <span class="material-symbols-outlined">account_tree</span> 项目
                 </button>
                 <button class="cm-nav-link" type="button" onclick="window.location.href='community.html'">
-                    <span class="material-symbols-outlined">groups</span> Community
+                    <span class="material-symbols-outlined">groups</span> 社区
                 </button>
                 <button class="cm-nav-link active" type="button">
-                    <span class="material-symbols-outlined">chat</span> Messages
+                    <span class="material-symbols-outlined">chat</span> 消息
                 </button>
             </nav>
             <div class="cm-sidebar-footer">
                 <button class="cm-nav-link" type="button" onclick="window.location.href='profile.html'">
-                    <span class="material-symbols-outlined">account_circle</span> Profile
+                    <span class="material-symbols-outlined">account_circle</span> 个人主页
                 </button>
                 <button class="cm-nav-link" type="button" onclick="localStorage.removeItem('currentUser'); window.location.href='index.html';">
-                    <span class="material-symbols-outlined">logout</span> Log out
+                    <span class="material-symbols-outlined">logout</span> 退出登录
                 </button>
             </div>
         </aside>
@@ -43,21 +43,21 @@
         <main class="cm-main messages-main">
             <section class="messages-list-panel">
                 <div class="messages-panel-head">
-                    <h1>Messages</h1>
+                    <h1>消息</h1>
                     <button class="cm-button ghost" type="button" onclick="loadThreads()">
                         <span class="material-symbols-outlined">refresh</span>
                     </button>
                 </div>
                 <div class="messages-search">
                     <span class="material-symbols-outlined">search</span>
-                    <input id="thread-search" type="search" placeholder="Search chats...">
+                    <input id="thread-search" type="search" placeholder="搜索会话...">
                 </div>
                 <div class="messages-tabs">
-                    <button class="active" type="button" data-filter="user" onclick="setThreadFilter('user', this)">Users</button>
-                    <button type="button" data-filter="project" onclick="setThreadFilter('project', this)">Projects</button>
+                    <button class="active" type="button" data-filter="user" onclick="setThreadFilter('user', this)">用户</button>
+                    <button type="button" data-filter="project" onclick="setThreadFilter('project', this)">项目</button>
                 </div>
                 <div id="thread-list" class="thread-list">
-                    <p class="muted" style="padding:18px;">Loading chats...</p>
+                    <p class="muted" style="padding:18px;">正在加载会话...</p>
                 </div>
             </section>
 
@@ -65,17 +65,17 @@
                 <header class="conversation-head">
                     <div class="cm-avatar" id="conversation-avatar">U</div>
                     <div>
-                        <h2 id="conversation-title">Select a chat</h2>
-                        <p id="conversation-status">Direct messages</p>
+                        <h2 id="conversation-title">选择一个会话</h2>
+                        <p id="conversation-status">私信</p>
                     </div>
                 </header>
 
                 <div id="conversation-history" class="conversation-history">
-                    <p class="muted" style="text-align:center;">Choose a conversation from the left.</p>
+                    <p class="muted" style="text-align:center;">从左侧选择一个会话。</p>
                 </div>
 
                 <div class="conversation-compose">
-                    <input id="message-input" type="text" placeholder="Type a message...">
+                    <input id="message-input" type="text" placeholder="输入消息...">
                     <button type="button" onclick="sendMessage()">
                         <span class="material-symbols-outlined">send</span>
                     </button>
@@ -84,6 +84,7 @@
         </main>
     </div>
 
+    <script src="site_language.js"></script>
     <script src="messages.js"></script>
 </body>
 </html>

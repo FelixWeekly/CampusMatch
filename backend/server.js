@@ -69,7 +69,7 @@ app.post('/api/send-code', async (req, res) => {
     verificationCodes.set(email, { code, expiresAt: Date.now() + 10 * 60 * 1000 });
     
     console.log(`\n===========================================`);
-    console.log(`📩 本地邮件测试向 ${email} 发送验证码: ${code}`);
+    console.log(`本地邮件测试，向 ${email} 发送验证码: ${code}`);
     console.log(`===========================================\n`);
 
     try {
@@ -4004,7 +4004,7 @@ app.put('/api/posts/:id/view', (req, res) => {
 // 启动服务器
 const port = 3000;
 app.listen(port, () => {
-    console.log(`🚀 后端服务器已启动，运行在 http://localhost:${port}`);
-    console.log(`📦 使用 Node.js 原生 SQLite 数据库`);
-    console.log(`🤖 AI 标签匹配: ${AI_ENABLED ? `enabled (model=${DEEPSEEK_MODEL}, timeout=${AI_TIMEOUT_MS}ms, tag_max_tokens=${AI_TAG_MAX_TOKENS})` : 'disabled (no API key)'}`);
+    console.log(`后端服务器已启动，运行在 http://localhost:${port}`);
+    console.log(`使用 Node.js 原生 SQLite 数据库`);
+    console.log(`AI: ${AI_ENABLED ? `enabled (model=${DEEPSEEK_MODEL}, timeout=${AI_TIMEOUT_MS}ms, tag_max_tokens=${AI_TAG_MAX_TOKENS})` : 'disabled (no API key)'}`);
 });

@@ -3,41 +3,41 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>CampusMatch Workspace</title>
+    <title>CampusMatch 工作区</title>
     <link rel="stylesheet" href="style.css">
 </head>
-<body class="dashboard-page-body">
+<body class="dashboard-page-body" data-cm-page="dashboard">
     <div class="cm-app-shell">
         <aside class="cm-sidebar">
             <a class="cm-brand" href="dashboard.html">
                 <span class="cm-brand-mark"><span class="material-symbols-outlined" style="font-variation-settings:'FILL' 1;">school</span></span>
                 <span>
                     <span class="cm-brand-title">CampusMatch</span>
-                    <span class="cm-brand-subtitle">Academic Workspace</span>
+                    <span class="cm-brand-subtitle">学术工作区</span>
                 </span>
             </a>
 
-            <nav class="cm-nav" aria-label="Workspace">
+            <nav class="cm-nav" aria-label="工作区">
                 <button class="cm-nav-link active" type="button" onclick="scrollToSection('top')">
-                    <span class="material-symbols-outlined">dashboard</span> Dashboard
+                    <span class="material-symbols-outlined">dashboard</span> 首页
                 </button>
                 <button class="cm-nav-link" type="button" onclick="window.location.href='team_management.html'">
-                    <span class="material-symbols-outlined">account_tree</span> Projects
+                    <span class="material-symbols-outlined">account_tree</span> 项目
                 </button>
                 <button class="cm-nav-link" type="button" onclick="window.location.href='community.html'">
-                    <span class="material-symbols-outlined">groups</span> Community
+                    <span class="material-symbols-outlined">groups</span> 社区
                 </button>
                 <button class="cm-nav-link" type="button" onclick="window.location.href='messages.html'">
-                    <span class="material-symbols-outlined">chat</span> Messages
+                    <span class="material-symbols-outlined">chat</span> 消息
                 </button>
             </nav>
 
             <div class="cm-sidebar-footer">
                 <button class="cm-nav-link" type="button" onclick="window.location.href='profile.html'">
-                    <span class="material-symbols-outlined">account_circle</span> Profile
+                    <span class="material-symbols-outlined">account_circle</span> 个人主页
                 </button>
                 <button class="cm-nav-link" type="button" onclick="logout()">
-                    <span class="material-symbols-outlined">logout</span> Log out
+                    <span class="material-symbols-outlined">logout</span> 退出登录
                 </button>
             </div>
         </aside>
@@ -45,12 +45,12 @@
         <main class="cm-main">
             <header class="cm-topbar">
                 <div>
-                    <h1 id="welcome-text">Welcome back</h1>
-                    <p>Here is your academic workspace for today.</p>
+                    <h1 id="welcome-text">欢迎回来</h1>
+                    <p>这是你今天的学术工作区。</p>
                 </div>
                 <div class="header-btns">
                     <button class="btn-inbox" type="button" onclick="openInbox()">
-                        <span class="material-symbols-outlined">notifications</span> Inbox
+                        <span class="material-symbols-outlined">notifications</span> 收件箱
                     </button>
                 </div>
             </header>
@@ -59,35 +59,35 @@
                 <div class="flow-guide-strip">
                     <button class="flow-guide-card" id="flow-top" onclick="scrollToSection('top')">
                         <span class="flow-guide-step">01</span>
-                        <span class="flow-guide-title">Create Request</span>
+                        <span class="flow-guide-title">创建需求</span>
                     </button>
                     <button class="flow-guide-card" id="flow-posts" onclick="scrollToSection('posts')">
                         <span class="flow-guide-step">02</span>
-                        <span class="flow-guide-title">Browse Matches</span>
+                        <span class="flow-guide-title">查看匹配</span>
                     </button>
                     <button class="flow-guide-card" id="flow-team" onclick="scrollToSection('team')">
                         <span class="flow-guide-step">03</span>
-                        <span class="flow-guide-title">Manage Work</span>
+                        <span class="flow-guide-title">管理协作</span>
                     </button>
                 </div>
 
                 <section class="publish-card">
                     <div class="cm-section-head">
                         <div>
-                            <span class="cm-eyebrow">New Collaboration</span>
-                            <h2>Post an opportunity</h2>
+                            <span class="cm-eyebrow">新协作</span>
+                            <h2>发布机会</h2>
                         </div>
                     </div>
 
                     <div class="field-stack">
-                        <label class="form-label">Tags</label>
+                        <label class="form-label">标签</label>
                         <div id="post-label-picker" style="display:flex; gap:8px; flex-wrap:wrap; align-items:center;"></div>
 
-                        <label class="form-label" for="post-title">Project Title</label>
-                        <input type="text" id="post-title" placeholder="e.g., AI Climate Research">
+                        <label class="form-label" for="post-title">项目标题</label>
+                        <input type="text" id="post-title" placeholder="例如：AI 气候研究">
 
-                        <label class="form-label" for="post-content">Details</label>
-                        <textarea id="post-content" rows="4" placeholder="Describe what you are working on and who you are looking for..."></textarea>
+                        <label class="form-label" for="post-content">详情</label>
+                        <textarea id="post-content" rows="4" placeholder="描述你在做什么，以及希望找到什么样的伙伴..."></textarea>
 
                         <div class="publish-checkboxes">
                             <label><input type="checkbox" id="post-requires-management"> 开启项目管理</label>
@@ -98,7 +98,7 @@
 
                         <div class="publish-actions">
                             <button class="btn-publish" type="button" onclick="createPost()">
-                                <span class="material-symbols-outlined">send</span> Post
+                                <span class="material-symbols-outlined">send</span> 发布
                             </button>
                         </div>
                     </div>
@@ -107,11 +107,11 @@
                 <section id="recommendation-section" class="cm-section">
                     <div class="cm-section-head">
                         <div>
-                            <span class="cm-eyebrow">AI Recommended</span>
-                            <h2>Recommended for you</h2>
+                            <span class="cm-eyebrow">AI 推荐</span>
+                            <h2>为你推荐</h2>
                         </div>
                         <button type="button" class="cm-button ghost" onclick="loadRecommendations()">
-                            <span class="material-symbols-outlined">refresh</span> Refresh
+                            <span class="material-symbols-outlined">refresh</span> 刷新
                         </button>
                     </div>
                     <div id="recommendation-container">
@@ -122,29 +122,29 @@
                 <section id="posts-section" class="cm-section">
                     <div class="cm-section-head">
                         <div>
-                            <span class="cm-eyebrow">Latest Opportunities</span>
-                            <h2>Campus posts</h2>
+                            <span class="cm-eyebrow">最新机会</span>
+                            <h2>校园帖子</h2>
                         </div>
-                        <button id="toggle-posts-btn" class="cm-button ghost" type="button" onclick="togglePostsSection()">Collapse list</button>
+                        <button id="toggle-posts-btn" class="cm-button ghost" type="button" onclick="togglePostsSection()">收起列表</button>
                     </div>
 
                     <div id="posts-section-body">
                         <div class="header-btns" style="margin:14px 0 18px;">
-                            <input id="filter-text" type="search" placeholder="Search opportunities" style="flex:1; min-width:220px;">
+                            <input id="filter-text" type="search" placeholder="搜索机会" style="flex:1; min-width:220px;">
                             <select id="filter-scope" style="max-width:170px;">
-                                <option value="all">Scope: All</option>
-                                <option value="mine">Scope: Mine</option>
+                                <option value="all">范围：全部</option>
+                                <option value="mine">范围：我的</option>
                             </select>
                             <select id="filter-compensation" style="max-width:170px;">
-                                <option value="all">Pay: All</option>
-                                <option value="paid">Pay: Paid</option>
-                                <option value="unpaid">Pay: Free</option>
+                                <option value="all">报酬：全部</option>
+                                <option value="paid">报酬：有偿</option>
+                                <option value="unpaid">报酬：无偿</option>
                             </select>
                             <select id="sort-by" style="max-width:170px;">
-                                <option value="newest">Sort: Newest</option>
-                                <option value="popular">Sort: Popular</option>
+                                <option value="newest">排序：最新</option>
+                                <option value="popular">排序：最热</option>
                             </select>
-                            <button class="cm-button ghost" type="button" onclick="clearFilters()">Clear</button>
+                            <button class="cm-button ghost" type="button" onclick="clearFilters()">清除</button>
                         </div>
 
                         <div id="posts-container">
@@ -157,11 +157,11 @@
                 <section class="team-center" id="team-center-section">
                     <div class="team-center-header">
                         <div>
-                            <span class="cm-eyebrow">Active Projects</span>
-                            <h2>Project workflow</h2>
+                            <span class="cm-eyebrow">活跃项目</span>
+                            <h2>项目流程</h2>
                         </div>
                         <button class="cm-button ghost" type="button" onclick="loadProjectPreviews()">
-                            <span class="material-symbols-outlined">refresh</span> Refresh
+                            <span class="material-symbols-outlined">refresh</span> 刷新
                         </button>
                     </div>
 
@@ -169,7 +169,7 @@
 
                     <div class="team-center-grid" id="team-management-grid">
                         <div class="project-list-panel">
-                            <h3>My managed collaborations</h3>
+                            <h3>我管理的协作</h3>
                             <div id="my-projects-list">
                                 <p class="muted">暂无项目记录</p>
                             </div>
@@ -188,11 +188,11 @@
     <div class="cm-side-panel-overlay" id="inbox-overlay" onclick="closeInbox()"></div>
     <div class="cm-side-panel" id="inbox-panel">
         <div class="cm-side-panel-header">
-            <h2>Inbox</h2>
+            <h2>收件箱</h2>
             <button onclick="closeInbox()" class="cm-button ghost" type="button">&times;</button>
         </div>
         <div class="cm-side-panel-body" id="inbox-messages">
-            <p class="inbox-empty">Loading...</p>
+            <p class="inbox-empty">正在加载...</p>
         </div>
     </div>
 
@@ -200,7 +200,7 @@
     <div class="cm-side-panel" id="inbox-detail-panel">
         <div class="cm-side-panel-header">
             <button onclick="closeInboxDetail()" class="cm-button ghost" type="button">
-                <span class="material-symbols-outlined">arrow_back</span> Back
+                <span class="material-symbols-outlined">arrow_back</span> 返回
             </button>
             <button onclick="closeInbox()" class="cm-button ghost" type="button">&times;</button>
         </div>
@@ -217,11 +217,12 @@
             <div id="chat-history" style="padding:16px; overflow:auto; flex:1; background:var(--surface-container-low);"></div>
             <div style="padding:12px; border-top:1px solid rgba(194,198,214,.42);">
                 <input id="chat-input" type="text" placeholder="输入私信...">
-                <button onclick="sendChatMessage()" style="width:100%; margin-top:8px;" type="button">Send</button>
+                <button onclick="sendChatMessage()" style="width:100%; margin-top:8px;" type="button">发送</button>
             </div>
         </div>
     </div>
 
+    <script src="site_language.js"></script>
     <script src="dashboard.js"></script>
 </body>
 </html>
