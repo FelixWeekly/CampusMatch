@@ -1,144 +1,182 @@
-#  CampusMatch  v0.0.0
+# CampusMatch v1.0.0
 
-> 一个轻量级、响应式的全栈 Web 应用，专为高校学生打造的“场景化”互助与任务匹配大厅。
+> 一个轻量级、响应式的全栈 Web 应用，专为高校学生打造的“场景化”互助与任务合作大厅。
 > 解决校园内临时找人、技能互换、组队竞赛等高频痛点。
 
-##  项目背景与价值
+---
+
+## 项目背景与价值
+
 - 在校园生活中，学生经常面临“临时寻找吉他手”、“急需海报设计”、“寻找竞赛队友”等长尾需求。
-- 传统的校园墙或微信群信息繁杂、难以检索且缺乏闭环，同时缺乏监管、初心为商业盈利。
-- 本项目旨在打造一个**纯粹、简洁、高效**，且专注于校园微任务的匹配引擎，提供从**发布需求 -> 浏览大厅 -> 报名对接 -> 消息触达**的完整业务闭环。
+- 传统的校园墙或微信群信息繁杂混乱、难以检索且缺乏闭环，同时缺乏监管、初心为商业盈利。
+- 本项目旨在打造一个**纯粹、简洁、高效**，且专注于校园交互、合作的智能引擎
 
-##  核心功能
+**CampusMatch 的价值主张**：
+- **纯粹性** — 专为高校场景设计，非商业化泛用平台，无广告、无付费墙
+- **结构化** — 将碎片化需求转化为可搜索、可匹配的结构化数据
+- **智能化** — AI 驱动的标签匹配与推荐系统，让合适的人看到合适的帖子
+- **全周期** — 覆盖"发布 → 匹配 → 组队 → 项目管理 → 结项互评"的完整链路
+- **社区化** — 圈子、社区帖子、Trending Topics，构建校园知识共享空间
+- **可监管** — 超管机制保证内容质量，圈子公示制防止劣质圈子泛滥
 
-- **🔐 身份认证系统**：支持用户注册与登录，前端基于 `localStorage` 实现状态保持与路由守卫。
-- **📝 动态大厅**：
-  - 支持发布“寻人组队”与“提供技能”两类帖子。
-  - 前端交互细节拉满：随发布类型动态切换的 Placeholder（提示词），防误触的独立操作区。
-  - 权限控制：仅发帖人可安全删除自己的帖子（后端校验 + 数据库级联删除）。
-- **🤝 报名与连接引擎**：用户可一键申请他人的帖子并附带留言。
-- **📬 收件箱**：发帖人拥有独立的站内信件箱，实时查看有哪些人申请了自己的任务。
+---
 
-## 技术栈
+## 核心功能模块
 
-本项目为了追求极致的加载速度与底层逻辑的掌控感，**前端零框架，后端极简依赖**：
+### 🔐 认证与账户
+- 邮箱注册/登录/找回密码，SMTP 验证码
+- localStorage 状态保持
+- 个人主页：资料编辑、头像上传（base64，本地文件选择）、账号删除
+- 超管账户（Captain）：删除任意帖子/圈子，直接创建圈子
 
-- **前端 (Frontend)**：HTML5, CSS3, Vanilla JavaScript (原生 JS)
-  - 使用 `Fetch API` 处理全量异步请求 (Async/Await)。
-  - 纯 DOM 操控实现 CSR (客户端渲染) 与页面状态切换。
-- **后端 (Backend)**：Node.js, Express.js, CORS
-  - 遵循 **RESTful API** 设计规范。
-- **数据库 (Database)**：原生 SQLite (`node:sqlite`)
-  - 拥抱 Node.js 最新特性，直接调用底层内置 SQLite 引擎，免除第三方 C++ 编译依赖，实现轻量级持久化。
-  - 运用 SQL `JOIN` 多表联合查询，实现复杂的消息收发逻辑。
+### 📝 Dashboard 帖子大厅
+- 发布"寻人组队"与"提供技能"两类帖子
+- 标签系统：固定标签 + 自定义标签（最长12字）
+- 模糊搜索：AI 标签扩展 + TF 余弦相似度，语义级匹配
+- 智能推荐：规则引擎召回 + AI 标签提取增强评分
+- Inbox 收件箱：申请管理（通过/拒绝）、详情查看、快捷发消息
 
-##  快速启动
+### 💬 社区 Plaza
+- 社区帖子流（玻璃拟态卡片） + 内嵌评论区
+- 圈子推荐（AI 标签匹配）
+- Trending Topics（从结构化标签聚合，排除系统标签，3级红色渐变）
+- 发帖可关联圈子和项目，AI 自动提取特征标签
 
-想要在本地运行此项目？只需简单的几步：
+### 👥 圈子 Circles
+- 圈子发现页：AI 推荐、分类筛选、提案公示（14天 + 10人支持阈值）
+- 圈子详情页：直接帖子 + AI 标签自动匹配帖子组成 Feed
+- 发帖自动继承圈子标签
+- 帖子数统计（直接帖 + 匹配帖）
 
-**1. 克隆项目**
-\`\`\`bash
-git clone https://github.com/FelixWeekly/CampusTasker.git
-cd CampusTasker
-\`\`\`
+### 📊 项目管理 Project Center
+- 项目全生命周期：招募 → 执行 → 结项（不可逆）
+- 时间线可视化 + 热力图（每日贡献汇总，按成员细分）
+- 需求池管理（优先级/状态/分配）
+- 进度打卡（出勤 + 任务完成）
+- 成员管理（加入申请审批、退出申请审批）
+- 结项互评系统（peer_scores：1-5分 + 客观/主观/综合分加权）
+- 第三方只读访问（非成员可查看但不可操作）
 
-**2. 启动后端服务器**
-\`\`\`bash
-cd backend
-npm install    # 安装 Express 和 CORS
-node server.js # 启动服务器 (运行在 http://localhost:3000)
-\`\`\`
+### 💬 消息 Messages
+- 用户私信 + 项目群聊（`recipient = "project:ID"`）
+- 会话列表（用户对话 + 项目频道混排）
 
-**3. 启动前端页面**
-- 使用 VS Code 打开项目。
-- 推荐安装 `Live Server` 插件。
-- 右键点击 `frontend/index.html`，选择 **"Open with Live Server"** 即可体验！
+---
 
-## 工程化亮点
-1. **防 SQL 注入**：后端所有数据库交互均采用 `prepare statement` (预编译语句) 传参。
-2. **关系型数据库设计**：建立 `users`、`posts`、`applications` 三张核心表，清晰映射“一对多”的实体关系。
+## 技术架构
 
-## 智能推荐 MVP（已接入）
+### 技术栈
 
-### 数据建模（先结构化，再推荐）
-- 用户画像 Feature Store：
-  - Hard Tags：年级、院系、校区
-  - Soft Tags：技能、兴趣、MBTI（从自我介绍可选识别）、历史成功率
-  - Vector：由用户文本简介与标签生成的语义向量
-- 帖子特征：
-  - 发布校区：由发布者个人资料自动继承
-  - 跨校区开关：`accept_cross_campus`
-  - 结构化标签 + 向量
+| 层 | 技术 | 说明 |
+|----|------|------|
+| 前端 | HTML5 + CSS3 + Vanilla JS | 零框架，原生 DOM 操控 + Fetch API |
+| 后端 | Node.js 24 + Express 5 | RESTful API，单一文件（4010行） |
+| 数据库 | SQLite (node:sqlite DatabaseSync) | 零配置嵌入式，26 张表 |
+| AI 模型 | DeepSeek V4 Flash | OpenAI SDK 兼容，`thinking: disabled` |
+| 邮件 | Nodemailer + QQ SMTP | 验证码发送 |
+| 图标 | Material Symbols | Google 图标字体 |
 
-### 推荐流程（两阶段）
-1. Recall 召回剪枝：
-  - 默认同校区过滤
-  - 若帖子开启跨校区协作则放行
-2. Ranking 排序打分：
-   - 技能匹配 + 兴趣匹配 + MBTI 兼容 + 语义相似度 + 历史成功率
+### AI 集成 — 标签化匹配引擎
 
-### 权重配置（可调）
-当前默认权重：
-```json
-{
-  "skill": 0.3,
-  "interest": 0.2,
-  "mbti": 0.1,
-  "semantic": 0.3,
-  "success": 0.1
-}
+核心思路：**AI 不直接排序帖子，而是从内容中提取结构化标签，本地做匹配**。这大幅降低了 token 消耗和响应延迟。
+
+```
+输入（用户画像 / 搜索词 / 圈子标签 / 帖子内容）
+        ↓
+┌───────────────────────────────────┐
+│  AI 标签提取（4 个函数，缓存 5min）  │
+│  · extractUserTagsWithAI()       │ → 技能/兴趣/偏好类型
+│  · expandSearchWithAI()          │ → 关键词扩展 + 缩写
+│  · expandCircleLabelsWithAI()    │ → 缩写/同义词扩展
+│  · extractContentTagsWithAI()    │ → 帖子特征标签
+└───────────────────────────────────┘
+        ↓
+┌───────────────────────────────────┐
+│  本地评分引擎                      │
+│  · TF 哈希向量 + 余弦相似度         │
+│  · 标签重叠度加权                   │
+│  · 规则权重（8维）                  │
+└───────────────────────────────────┘
+        ↓
+     排序输出
 ```
 
-### 关键 API
+**关键优化**：
+- `thinking: {type: "disabled"}` 消除 reasoning tokens，响应从 ~7s 降至 ~500ms
+- `max_tokens: 300`，输出仅 13 tokens（几个标签），极低成本
+- Map 缓存 5 分钟，重复查询命中缓存
+- AI 失败自动降级到规则引擎
 
-- `GET /api/recommendations?user=<用户名>&limit=6`
-  - 返回推荐列表、召回数量、候选总量、当前权重
+### 推荐算法
 
-- `GET /api/recommendation-config`
-  - 返回校区枚举、协作模式枚举、推荐权重
+**两阶段设计**：
 
-- `PUT /api/profile`
-  - 支持字段：`campus`、`bio`（可选在 bio 中写 MBTI）
+1. **召回（Recall）**：同校区过滤（跨校区开关控制）+ TF 向量预筛选
+2. **排序（Ranking）**：8 维加权打分
 
-- `POST /api/posts`
-  - 支持字段：`accept_cross_campus`
+| 维度 | 权重 | 计算方式 |
+|------|------|----------|
+| 技能匹配 | 0.24 | 用户技能 ↔ 帖子技能 Jaccard |
+| 语义相似度 | 0.23 | TF 哈希向量余弦相似度 |
+| 兴趣匹配 | 0.14 | 用户兴趣 ↔ 帖子标签 |
+| 行为反馈 | 0.13 | 历史点击/申请/录用事件归一化 |
+| 成功率 | 0.09 | 用户历史被录用/完成率 |
+| MBTI 兼容 | 0.07 | 同类型得满分，部分匹配按位加权 |
+| 新鲜度 | 0.06 | 指数衰减（半衰期 7 天） |
+| 活跃度 | 0.04 | 近期互动频率 |
 
-- `POST /api/location/off-campus/resolve`
-  - 校外地址定位占位接口（当前返回 501）
-  - 便于后续接入外部地图 API，不影响现有校区内匹配链路
+**AI 增强**：`extractUserTagsWithAI()` 提取标签后，标签重叠分 ×0.7 + AI 标签增强分 ×0.3 = 最终分数
 
-### 快速联调示例
+### 模糊搜索
 
-更新个人画像：
-```bash
-curl -X PUT http://localhost:3000/api/profile \
-  -H "Content-Type: application/json" \
-  -d '{
-    "name": "张三",
-    "department": "计算机学院",
-    "grade": "2024级本科",
-    "campus": "沙河校区",
-    "bio": "我擅长后端与数据处理，偏好竞赛，MBTI 是 INTJ",
-    "portfolio": ""
-  }'
+```
+用户输入 "乐器"
+    → expandSearchWithAI("乐器") 
+    → ["音乐", "演奏", "吉他", "乐队", "器乐"]
+    → TF 搜索扩展词 → 找到 "来个会弹吉他的"（原查询不含 "乐器"）
 ```
 
-发布线下帖子：
-```bash
-curl -X POST http://localhost:3000/api/posts \
-  -H "Content-Type: application/json" \
-  -d '{
-    "author": "李四",
-    "title": "招募算法同学打比赛",
-    "content": "希望熟悉 Python 和机器学习，周末线下讨论更方便",
-    "type": "寻人组队",
-    "accept_cross_campus": false
-  }'
-```
+混合评分：精确匹配 ×0.5 + AI 扩展匹配 ×0.25 + 标签匹配 ×0.25
 
-获取推荐：
-```bash
-curl "http://localhost:3000/api/recommendations?user=张三&limit=6"
+### 互评计分
+
+```
+final_score = objective_score × 0.6 + subjective_score × 0.4
+  objective_score: 任务完成度 (%)
+  subjective_score: peer_scores 平均分 × 20
 ```
 
 ---
+
+## 快速启动
+
+```bash
+# 1. 启动后端
+cd backend
+npm install
+node server.js          # → http://localhost:3000
+
+# 2. 打开前端
+# 浏览器直接打开 frontend/index.html（或使用 Live Server）
+```
+
+**配置 AI（可选，不配置则回退规则引擎）**：
+编辑 `backend/.env`：
+```
+DEEPSEEK_API_KEY="sk-your-key"
+```
+
+---
+
+## 安全设计
+
+- SQL 注入防护：全局 `db.prepare()` 参数化查询
+- 权限分级：游客 / 普通用户 / 项目 Leader / 超管
+- 输入校验：标签白名单、评分范围、头像格式/大小
+- 账号删除：级联清理 + 匿名化（`'Deleted User'`）
+- CORS：`origin: '*'` + `Cross-Origin-Resource-Policy: cross-origin`
+- API Key：`.env` 隔离，`.gitignore` 排除
+
+---
+
 *Developed with ❤️ by Felix | 期待您的使用与反馈*

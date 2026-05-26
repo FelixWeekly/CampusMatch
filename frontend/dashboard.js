@@ -917,7 +917,7 @@ async function openInbox() {
         }
 
         window._inboxMessages = data.data;
-        messagesContainer.innerHTML = data.data.map((msg, idx) => {
+        var html = data.data.map((msg, idx) => {
             const isTeamRecruit = msg.type === '寻人组队';
             const isPending = msg.status === 'pending';
             const statusCls = msg.status === 'accepted' ? 'accepted' : (msg.status === 'rejected' ? 'rejected' : 'pending');
@@ -927,7 +927,7 @@ async function openInbox() {
             return `
                 <div class="inbox-app-card">
                     <div class="inbox-app-header">
-                        <div class="inbox-app-avatar">${initials}</div>
+                        <span class="cm-avatar-sm" style="width:40px;height:40px;font-size:17px;" data-user="${encodeURIComponent(msg.applicant_name || '')}">${initials}</span>
                         <div class="inbox-app-meta">
                             <div class="inbox-app-name">${escapeHtml(msg.applicant_name)}</div>
                             <div class="inbox-app-info">${dashboardCopy('申请于', 'Applied')}</div>
@@ -949,8 +949,26 @@ async function openInbox() {
                 </div>
             `;
         }).join('');
+        messagesContainer.innerHTML = html;
+        initAvatars();
     } catch (_) {
         messagesContainer.innerHTML = `<p class="inbox-empty">${dashboardCopy('网络错误', 'Network error')}</p>`;
+    }
+}
+
+function initAvatars() {
+    var els = document.querySelectorAll('.cm-avatar-sm[data-user]');
+    for (var i = 0; i < els.length; i++) {
+        (function(el) {
+            var user = el.getAttribute('data-user');
+            if (!user) return;
+            var img = document.createElement('img');
+            img.src = 'http://localhost:3000/api/users/avatar/' + user + '/raw';
+            img.setAttribute('style', 'position:absolute;top:0;left:0;width:100%;height:100%;object-fit:cover;border-radius:50%');
+            img.onerror = function() { this.remove(); };
+            img.onload = function() { this.setAttribute('style', 'position:absolute;top:0;left:0;width:100%;height:100%;object-fit:cover;border-radius:50%;z-index:1'); };
+            el.appendChild(img);
+        })(els[i]);
     }
 }
 
@@ -971,7 +989,7 @@ function openInboxDetail(idx) {
     const statusText = msg.status === 'accepted' ? dashboardCopy('已通过', 'Accepted') : (msg.status === 'rejected' ? dashboardCopy('已拒绝', 'Rejected') : dashboardCopy('待处理', 'Pending'));
     content.innerHTML = `
         <div style="text-align:center;margin-bottom:20px;">
-            <div class="inbox-app-avatar" style="width:72px;height:72px;font-size:28px;margin:0 auto 12px;">${initials}</div>
+            <span class="cm-avatar-sm" style="width:72px;height:72px;font-size:28px;margin:0 auto 12px;" data-user="${encodeURIComponent(msg.applicant_name || '')}">${initials}</span>
             <h2 style="margin:0 0 4px;font-size:22px;font-weight:800;">${escapeHtml(msg.applicant_name || '')}</h2>
             <p style="margin:0;color:var(--outline);font-size:13px;">${escapeHtml(msg.applicant_dept || '')} · ${escapeHtml(msg.applicant_grade || '')}</p>
         </div>
@@ -990,6 +1008,7 @@ function openInboxDetail(idx) {
             </button>
         </div>
     `;
+    initAvatars();
 }
 
 function closeInboxDetail() {
