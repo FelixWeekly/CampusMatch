@@ -380,7 +380,7 @@ function selectCollabLabel(label) {
 
 /* ── Drafts ── */
 function captureDrafts() {
-    const fields = ['new-req-title', 'new-req-desc', 'new-req-priority', 'new-req-assignee',
+    const fields = ['new-req-title', 'new-req-desc', 'new-req-priority',
         'collab-title', 'collab-body', 'collab-target', 'checkin-note', 'checkin-completion',
         'new-member-name', 'new-member-role', 'rating-reviewee', 'rating-comment'];
     fields.forEach((id) => {
@@ -648,7 +648,6 @@ function renderIssues(detail) {
                 </div>
                 <div class="field-stack">
                     <select id="new-req-priority"><option value="medium">${projectCopy('中', 'Medium')}</option><option value="high">${projectCopy('高', 'High')}</option><option value="low">${projectCopy('低', 'Low')}</option></select>
-                    <input id="new-req-assignee" type="text" placeholder="${projectCopy('负责人姓名', 'Assignee name')}">
                     <button class="issue-submit-btn" onclick="createRequirement()">${projectCopy('创建', 'Create')}</button>
                 </div>
             </div>
@@ -964,13 +963,12 @@ async function createRequirement() {
     const title = document.getElementById('new-req-title')?.value?.trim();
     const desc = document.getElementById('new-req-desc')?.value?.trim();
     const priority = document.getElementById('new-req-priority')?.value || 'medium';
-    const assignee = document.getElementById('new-req-assignee')?.value?.trim();
     if (!title) return alert(projectCopy('请输入标题', 'Title required'));
     try {
         const resp = await fetch(`http://localhost:3000/api/projects/${state.activeProjectId}/requirements`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ actor: currentUser, title, description: desc, priority, assignee })
+            body: JSON.stringify({ actor: currentUser, title, description: desc, priority })
         });
         const json = await resp.json();
         if (json.success) {

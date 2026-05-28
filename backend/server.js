@@ -1435,16 +1435,11 @@ function computePostSearchScore(post, queryText) {
     const queryLower = query.toLowerCase();
     const queryTokens = tokenizeText(queryLower).filter((token) => token.length >= 2);
     const queryTags = extractTagsFromText(query);
-    const queryVec = buildHashedVector(query);
-
     const labels = parsePostLabels(post.post_labels);
     const structured = safeJsonParse(post.structured_tags || '{}', {});
     const postText = `${post.title || ''} ${post.content || ''} ${labels.join(' ')} ${(structured.skills || []).join(' ')} ${(structured.interests || []).join(' ')}`;
     const postLower = postText.toLowerCase();
-    const postVec = safeJsonParse(post.feature_vector || '[]', []);
-    const fallbackVec = Array.isArray(postVec) && postVec.length ? postVec : buildHashedVector(postText);
 
-    const semanticScore = cosineSimilarity(queryVec, fallbackVec);
     const exactScore = postLower.includes(queryLower) ? 1 : 0;
     const tokenHit = queryTokens.length
         ? queryTokens.filter((token) => postLower.includes(token)).length / queryTokens.length
@@ -1453,11 +1448,20 @@ function computePostSearchScore(post, queryText) {
     const interestOverlap = overlapScore(queryTags.interests || [], structured.interests || []);
     const tagOverlap = (skillOverlap + interestOverlap) / 2;
 
+    // 需要至少两个维度的证据, 防止单一标签巧合匹配 (如"音乐疗法"匹配"吉他")
+    let signalCount = 0;
+    if (exactScore > 0) signalCount++;
+    if (tokenHit > 0) signalCount++;
+    if (tagOverlap > 0) signalCount++;
+    if (signalCount < 2) return 0;
+
+    const queryVec = buildHashedVector(query, 128);
+    const semanticScore = cosineSimilarity(queryVec, buildHashedVector(postText, 128));
     return Number((
-        semanticScore * 0.45 +
-        exactScore * 0.25 +
-        tokenHit * 0.2 +
-        tagOverlap * 0.1
+        semanticScore * 0.15 +
+        exactScore * 0.35 +
+        tokenHit * 0.35 +
+        tagOverlap * 0.15
     ).toFixed(6));
 }
 
@@ -1718,26 +1722,33 @@ app.get('/api/posts/search-ai', async (req, res) => {
         const searchTags = await aiPromise;
         const aiExpanded = !!searchTags;
 
-        // Step 4: 如果AI返回了扩展词，用扩展词完全重新评分
+        // Step 4: AI标签增强 — 仅加分不扣分
         if (searchTags && ranked.length > 0) {
-            const expandedQuery = [query, ...(searchTags.expanded_terms || []), ...(searchTags.related_skills || []), ...(searchTags.related_interests || [])].join(' ');
             ranked.forEach(item => {
-                const expandedScore = computePostSearchScore(item._raw, expandedQuery);
                 const tagScore = computeSearchTagScore(`${item.title} ${item.content}`, item.post_labels, searchTags);
-                item.score = expandedScore * 0.6 + tagScore * 0.4;
+                if (tagScore > 0) {
+                    if (item.score === 0 && tagScore < 2) {
+                        // 本地零分帖需要AI强证据(≥3个标签命中)才复活, 防止偶然匹配
+                        return;
+                    }
+                    const boost = Math.min(1, tagScore / 5) * 0.5;
+                    item.score = item.score * 0.7 + boost;
+                }
             });
             ranked.sort((a, b) => b.score - a.score);
         }
 
-        // 清理内部字段
+        // 清理内部字段 + 过滤零分噪声
         ranked.forEach(item => { delete item._raw; });
 
-        const result = ranked.map(item => ({
-            id: item.id,
-            title: item.title,
-            score: item.score,
-            created_at: item.created_at
-        }));
+        const result = ranked
+            .filter(item => item.score > 0)
+            .map(item => ({
+                id: item.id,
+                title: item.title,
+                score: item.score,
+                created_at: item.created_at
+            }));
 
         res.json({
             success: true,
