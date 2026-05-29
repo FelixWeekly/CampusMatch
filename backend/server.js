@@ -238,6 +238,17 @@ db.exec(`
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP
     );
 
+    -- 用户举报与治理记录
+    CREATE TABLE IF NOT EXISTS user_reports (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        reporter TEXT,
+        reported_user TEXT,
+        reason TEXT,
+        detail TEXT DEFAULT '',
+        status TEXT DEFAULT 'open',
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
+
     -- 项目需求池：一个项目下可持续发布多个需求
     CREATE TABLE IF NOT EXISTS project_requirements (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -2004,7 +2015,7 @@ app.get('/api/profile/:username', (req, res) => {
     const username = req.params.username;
     try {
         const user = db.prepare(`
-            SELECT name, email, department, grade, bio, portfolio, campus, avatar
+            SELECT name, email, department, grade, bio, portfolio, campus, avatar, role
             FROM users
             WHERE name = ?
         `).get(username);
@@ -2128,12 +2139,6 @@ app.delete('/api/account', (req, res) => {
         const account = db.prepare('SELECT * FROM users WHERE name = ?').get(userName);
         if (!account) return res.status(404).json({ success: false, message: '用户不存在' });
 
-        // Log the deletion reason if provided
-        if (reason || feedback) {
-            db.prepare("INSERT INTO project_events (project_id, actor, event_type, title, detail, severity) VALUES (0, ?, 'account_deletion', '账户注销', ?, 'low')")
-                .run(userName, `理由: ${reason || '未提供'} | 反馈: ${feedback || '无'}`);
-        }
-
         // Anonymize messages (replace sender name with "Deleted User")
         db.prepare("UPDATE messages SET sender = 'Deleted User' WHERE sender = ?").run(userName);
         db.prepare("UPDATE messages SET recipient = 'Deleted User' WHERE recipient = ? AND recipient NOT LIKE 'project:%'").run(userName);
@@ -2178,10 +2183,107 @@ app.delete('/api/account', (req, res) => {
         // Finally delete the user
         db.prepare('DELETE FROM users WHERE name = ?').run(userName);
 
+        const deletionDetail = JSON.stringify({
+            deleted_user: userName,
+            reason: reason || '',
+            feedback: feedback || ''
+        });
+        db.prepare("INSERT INTO project_events (project_id, actor, event_type, title, detail, severity) VALUES (0, 'System', 'account_deletion', '账户注销', ?, 'medium')")
+            .run(deletionDetail);
+
         res.json({ success: true, message: '账户已注销。感谢你使用 CampusMatch。' });
     } catch (err) {
         console.error(err);
         res.status(500).json({ success: false, message: '注销失败，请稍后重试' });
+    }
+});
+
+app.post('/api/users/report', (req, res) => {
+    const { reporter, target_user, reason, detail } = req.body;
+    const reporterName = String(reporter || '').trim();
+    const targetUser = String(target_user || '').trim();
+    const reportReason = String(reason || '').trim();
+    const reportDetail = String(detail || '').trim();
+
+    if (!reporterName || !targetUser || !reportReason) {
+        return res.status(400).json({ success: false, message: '缺少必要参数' });
+    }
+    if (reporterName === targetUser) {
+        return res.status(400).json({ success: false, message: '不能举报自己' });
+    }
+
+    try {
+        const reporterRow = db.prepare('SELECT name FROM users WHERE name = ?').get(reporterName);
+        const targetRow = db.prepare('SELECT name FROM users WHERE name = ?').get(targetUser);
+        if (!reporterRow) return res.status(404).json({ success: false, message: '举报人不存在' });
+        if (!targetRow) return res.status(404).json({ success: false, message: '被举报用户不存在' });
+
+        db.prepare(`
+            INSERT INTO user_reports (reporter, reported_user, reason, detail)
+            VALUES (?, ?, ?, ?)
+        `).run(reporterName, targetUser, reportReason, reportDetail);
+
+        res.json({ success: true, message: '举报已提交，超管可查看。' });
+    } catch (err) {
+        res.status(500).json({ success: false, message: '提交举报失败' });
+    }
+});
+
+app.get('/api/admin/moderation', (req, res) => {
+    const currentUser = String(req.query.user || '').trim();
+    if (!isAdmin(currentUser)) {
+        return res.status(403).json({ success: false, message: '仅管理员可查看' });
+    }
+
+    try {
+        const reportRows = db.prepare(`
+            SELECT id, reporter, reported_user, reason, detail, status, created_at
+            FROM user_reports
+            ORDER BY created_at DESC, id DESC
+            LIMIT 120
+        `).all();
+
+        const deletionRows = db.prepare(`
+            SELECT id, detail, created_at
+            FROM project_events
+            WHERE event_type = 'account_deletion'
+            ORDER BY created_at DESC, id DESC
+            LIMIT 120
+        `).all();
+
+        const reports = reportRows.map((row) => ({
+            ...row,
+            detail: row.detail || ''
+        }));
+
+        const accountDeletions = deletionRows.map((row) => {
+            const payload = extractJsonPayload(row.detail) || safeJsonParse(row.detail, null) || {};
+            const legacyMatch = !payload.deleted_user && typeof row.detail === 'string'
+                ? String(row.detail).match(/理由:\s*(.*?)\s*\|\s*反馈:\s*(.*)$/)
+                : null;
+
+            return {
+                id: row.id,
+                deleted_user: payload.deleted_user || '未知用户',
+                reason: payload.reason || (legacyMatch ? legacyMatch[1] : '') || '',
+                feedback: payload.feedback || (legacyMatch ? legacyMatch[2] : '') || '',
+                created_at: row.created_at
+            };
+        });
+
+        res.json({
+            success: true,
+            data: {
+                reports,
+                account_deletions: accountDeletions,
+                counts: {
+                    reports: reports.length,
+                    account_deletions: accountDeletions.length
+                }
+            }
+        });
+    } catch (err) {
+        res.status(500).json({ success: false, message: '获取管理数据失败' });
     }
 });
 

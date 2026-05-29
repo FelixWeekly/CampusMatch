@@ -196,6 +196,10 @@
         setText('#delete-overlay h4', language === 'en' ? 'What happens next?' : '接下来会发生什么？');
         setText('#delete-overlay .cm-button', language === 'en' ? 'Keep account' : '保留账号');
         setText('#btn-delete-confirm', language === 'en' ? 'Permanently delete' : '永久删除');
+        setText('#report-overlay button[onclick="closeReportModal()"]', language === 'en' ? 'Close' : '关闭');
+        setText('#report-overlay h2', language === 'en' ? 'Report user' : '举报用户');
+        setText('#btn-report-submit', language === 'en' ? 'Submit report' : '提交举报');
+        setPlaceholder('#report-detail', language === 'en' ? 'Briefly describe what happened so the admin can review it.' : '简单说下发生了什么，方便超管判断。');
     }
 
     function applyTeam(language) {

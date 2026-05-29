@@ -16,9 +16,16 @@ function campusMatchLanguage() {
     return window.getCampusMatchLanguage ? window.getCampusMatchLanguage() : ((localStorage.getItem('campusmatch-language') || 'zh') === 'en' ? 'en' : 'zh');
 }
 
+function profileCopy(zh, en) {
+    return campusMatchLanguage() === 'en' ? en : zh;
+}
+
+let adminModerationState = null;
+let reportTargetUser = '';
+
 window.onload = function() {
     if (!currentUser) {
-        alert('请先登录！');
+        alert(profileCopy('请先登录！', 'Please log in first.'));
         window.location.href = 'index.html';
         return;
     }
@@ -29,7 +36,7 @@ window.onload = function() {
         if (isOwnProfile) {
             wrapper.classList.add('is-owner');
             wrapper.style.cursor = 'pointer';
-            wrapper.title = '点击更换头像';
+            wrapper.title = profileCopy('点击更换头像', 'Click to change avatar');
             wrapper.onclick = function() { document.getElementById('avatar-file-input').click(); };
         } else {
             wrapper.style.cursor = 'default';
@@ -49,6 +56,8 @@ async function fetchProfileData() {
         if (data.success) {
             // 1. 渲染左侧个人资料
             const u = data.data;
+            const isOwnProfile = viewingUser === currentUser;
+            const isAdminUser = u.role === 'admin';
             document.getElementById('display-name').innerText = u.name;
             // 默认头像：名字首字母
             const avatarIcon = document.getElementById('avatar-icon');
@@ -113,25 +122,36 @@ async function fetchProfileData() {
 
             // 2. 动态决定显示什么按钮
             const btnContainer = document.getElementById('action-btn-container');
-            if (viewingUser === currentUser) {
+            if (isOwnProfile) {
                 document.getElementById('btn-back-profile').style.display = 'none';
                 const delBtn = document.getElementById('btn-delete-account');
                 if (delBtn) delBtn.style.display = '';
-                btnContainer.innerHTML = `<button onclick="openEditModal()" style="width: 100%; background: var(--primary); color: var(--on-primary); padding: 12px; border-radius: var(--radius-sm); font-weight: 800;">${campusMatchLanguage() === 'en' ? 'Edit profile' : '编辑资料'}</button>`;
+                btnContainer.innerHTML = `<button onclick="openEditModal()" style="width: 100%; background: var(--primary); color: var(--on-primary); padding: 12px; border-radius: var(--radius-sm); font-weight: 800;">${profileCopy('编辑资料', 'Edit profile')}</button>`;
                 document.getElementById('edit-dept').value = u.department === '未设置院系' ? '' : u.department;
                 document.getElementById('edit-grade').value = u.grade === '未设置年级' ? '' : u.grade;
                 document.getElementById('edit-campus').value = u.campus || '沙河校区';
                 document.getElementById('edit-bio').value = u.bio === '这个人很懒，还没写自我介绍~' ? '' : u.bio;
                 document.getElementById('edit-portfolio').value = u.portfolio;
+                if (isAdminUser) {
+                    await loadAdminModeration();
+                } else {
+                    renderAdminModeration(null);
+                }
             } else {
                 document.getElementById('btn-back-profile').style.display = '';
                 const delBtn2 = document.getElementById('btn-delete-account');
                 if (delBtn2) delBtn2.style.display = 'none';
                 btnContainer.innerHTML = `
-                    <button onclick="window.location.href='messages.html?user=${encodeURIComponent(viewingUser)}'" style="width: 100%; background: var(--primary); color: var(--on-primary); padding: 12px; border-radius: var(--radius-sm); font-weight: 800;">
-                        <span class="material-symbols-outlined" style="vertical-align:middle; font-size:18px;">send</span> ${campusMatchLanguage() === 'en' ? 'Send message' : '发消息'}
-                    </button>
+                    <div style="display:flex;gap:10px;flex-wrap:wrap;">
+                        <button onclick="window.location.href='messages.html?user=${encodeURIComponent(viewingUser)}'" style="flex:1;min-width:150px;background:var(--primary);color:var(--on-primary);padding:12px;border-radius:var(--radius-sm);font-weight:800;">
+                            <span class="material-symbols-outlined" style="vertical-align:middle;font-size:18px;">send</span> ${profileCopy('发消息', 'Send message')}
+                        </button>
+                        <button class="cm-button ghost" type="button" onclick='openReportModal(${JSON.stringify(viewingUser)})' style="flex:1;min-width:150px;color:var(--error);border-color:var(--error);">
+                            <span class="material-symbols-outlined" style="vertical-align:middle;font-size:18px;">flag</span> ${profileCopy('举报', 'Report')}
+                        </button>
+                    </div>
                 `;
+                renderAdminModeration(null);
             }
 
             // 3. 渲染右侧评价列表
@@ -230,6 +250,123 @@ async function saveProfile() {
         }
     } catch (err) {
         alert(campusMatchLanguage() === 'en' ? 'Save failed!' : '保存失败！');
+    }
+}
+
+function renderAdminModeration(payload) {
+    const card = document.getElementById('admin-moderation-card');
+    const stats = document.getElementById('admin-moderation-stats');
+    const reportList = document.getElementById('admin-report-list');
+    const deletionList = document.getElementById('admin-deletion-list');
+    adminModerationState = payload || null;
+
+    if (!card || !stats || !reportList || !deletionList) return;
+
+    if (!payload) {
+        card.style.display = 'none';
+        stats.innerText = '';
+        reportList.innerHTML = '';
+        deletionList.innerHTML = '';
+        return;
+    }
+
+    const reports = Array.isArray(payload.reports) ? payload.reports : [];
+    const deletions = Array.isArray(payload.account_deletions) ? payload.account_deletions : [];
+    card.style.display = '';
+    stats.innerText = `${reports.length} ${profileCopy('条举报', 'reports')} · ${deletions.length} ${profileCopy('条注销反馈', 'deletion notes')}`;
+
+    reportList.innerHTML = reports.length ? reports.map((item) => `
+        <div style="background:#fff;border:1px solid rgba(194,198,214,0.45);border-radius:12px;padding:14px;">
+            <div style="display:flex;justify-content:space-between;gap:10px;align-items:flex-start;margin-bottom:8px;">
+                <div>
+                    <strong style="font-size:14px;">${escapeHtml(item.reported_user || '未知用户')}</strong>
+                    <p style="margin:4px 0 0;font-size:12px;color:var(--on-surface-variant);">${escapeHtml(item.reporter || '-') } · ${escapeHtml(item.created_at || '')}</p>
+                </div>
+                <span style="font-size:11px;padding:4px 8px;border-radius:999px;background:var(--primary-container);color:var(--primary);font-weight:800;">${escapeHtml(item.status || 'open')}</span>
+            </div>
+            <p style="margin:0 0 6px;font-size:13px;color:var(--on-surface);"><strong>${profileCopy('原因', 'Reason')}：</strong>${escapeHtml(item.reason || '')}</p>
+            ${item.detail ? `<p style="margin:0;font-size:12px;color:var(--on-surface-variant);line-height:1.5;white-space:pre-wrap;">${escapeHtml(item.detail)}</p>` : ''}
+        </div>
+    `).join('') : `<p class="muted" style="margin:0;">${profileCopy('暂无举报', 'No reports yet')}</p>`;
+
+    deletionList.innerHTML = deletions.length ? deletions.map((item) => `
+        <div style="background:#fff;border:1px solid rgba(194,198,214,0.45);border-radius:12px;padding:14px;">
+            <div style="display:flex;justify-content:space-between;gap:10px;align-items:flex-start;margin-bottom:8px;">
+                <div>
+                    <strong style="font-size:14px;">${escapeHtml(item.deleted_user || '未知用户')}</strong>
+                    <p style="margin:4px 0 0;font-size:12px;color:var(--on-surface-variant);">${escapeHtml(item.created_at || '')}</p>
+                </div>
+                <span class="material-symbols-outlined" style="font-size:18px;color:var(--error);">delete_forever</span>
+            </div>
+            <p style="margin:0 0 6px;font-size:13px;color:var(--on-surface);"><strong>${profileCopy('原因', 'Reason')}：</strong>${escapeHtml(item.reason || '未提供')}</p>
+            <p style="margin:0;font-size:12px;color:var(--on-surface-variant);line-height:1.5;white-space:pre-wrap;"><strong>${profileCopy('反馈', 'Feedback')}：</strong>${escapeHtml(item.feedback || '无')}</p>
+        </div>
+    `).join('') : `<p class="muted" style="margin:0;">${profileCopy('暂无注销反馈', 'No deletion feedback yet')}</p>`;
+}
+
+async function loadAdminModeration() {
+    const adminUser = localStorage.getItem('currentUser');
+    if (!adminUser) return;
+
+    try {
+        const resp = await fetch(`http://localhost:3000/api/admin/moderation?user=${encodeURIComponent(adminUser)}`);
+        const json = await resp.json();
+        if (json.success) {
+            renderAdminModeration(json.data || {});
+        } else {
+            renderAdminModeration(null);
+        }
+    } catch (_) {
+        renderAdminModeration(null);
+    }
+}
+
+function openReportModal(targetUser) {
+    const target = String(targetUser || viewingUser || '').trim();
+    if (!target || target === currentUser) return;
+    reportTargetUser = target;
+    const targetEl = document.getElementById('report-target-user');
+    const reasonEl = document.getElementById('report-reason');
+    const detailEl = document.getElementById('report-detail');
+    if (targetEl) targetEl.innerText = target;
+    if (reasonEl) reasonEl.value = 'spam';
+    if (detailEl) detailEl.value = '';
+    document.getElementById('report-overlay').style.display = 'block';
+    document.body.style.overflow = 'hidden';
+}
+
+function closeReportModal() {
+    document.getElementById('report-overlay').style.display = 'none';
+    document.body.style.overflow = '';
+}
+
+async function submitUserReport() {
+    const reporter = localStorage.getItem('currentUser');
+    const targetUser = reportTargetUser || viewingUser;
+    const reason = document.getElementById('report-reason')?.value || '';
+    const detail = document.getElementById('report-detail')?.value?.trim() || '';
+
+    if (!reporter || !targetUser) return;
+    if (!reason) {
+        alert(profileCopy('请选择举报原因。', 'Please choose a report reason.'));
+        return;
+    }
+
+    try {
+        const resp = await fetch('http://localhost:3000/api/users/report', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ reporter, target_user: targetUser, reason, detail })
+        });
+        const json = await resp.json();
+        if (json.success) {
+            alert(profileCopy('举报已提交。', 'Report submitted.'));
+            closeReportModal();
+        } else {
+            alert(json.message || profileCopy('提交失败。', 'Submission failed.'));
+        }
+    } catch (_) {
+        alert(profileCopy('网络错误，请重试。', 'Network error. Please try again.'));
     }
 }
 
